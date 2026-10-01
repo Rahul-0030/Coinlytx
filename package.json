@@ -1,0 +1,12 @@
+{
+  "name": "coinlytx",
+  "version": "1.0.0",
+  "description": "Coinlytx Crypto Media Website",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
