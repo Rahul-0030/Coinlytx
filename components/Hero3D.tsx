@@ -37,7 +37,7 @@ export default function Hero3D() {
     async function loadBreakingNews() {
       try {
         const response = await fetch(
-          "https://coinlytx.com/wp-json/wp/v2/posts?per_page=5",
+          "https://cms.coinlytx.com/wp-json/wp/v2/posts?per_page=5",
           {
             cache: "no-store",
           }

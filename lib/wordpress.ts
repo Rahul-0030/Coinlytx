@@ -4,7 +4,7 @@
    https://coinlytx.com
 ========================================================= */
 
-const WORDPRESS_URL = "https://coinlytx.com";
+const WORDPRESS_URL = "https://cms.coinlytx.com";
 
 const API_URL = `${WORDPRESS_URL}/wp-json/wp/v2`;
 
@@ -100,20 +100,28 @@ async function wordpressFetch<T>(
   endpoint: string,
   revalidate = 300
 ): Promise<T> {
-  const response = await fetch(
-    `${API_URL}${endpoint}`,
-    {
-      next: {
-        revalidate,
-      },
+  const url = `${API_URL}${endpoint}`;
 
-      headers: {
-        Accept: "application/json",
-      },
-    }
-  );
+  const response = await fetch(url, {
+    next: {
+      revalidate,
+    },
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Coinlytx/1.0",
+    },
+  });
 
   if (!response.ok) {
+    const body = await response.text();
+
+    console.error("WordPress API request failed:", {
+      url,
+      status: response.status,
+      statusText: response.statusText,
+      body: body.slice(0, 500),
+    });
+
     throw new Error(
       `WordPress API error: ${response.status} ${response.statusText}`
     );
@@ -321,7 +329,7 @@ export async function getPressReleasePosts(
   perPage: number = 7
 ): Promise<WordPressPost[]> {
   const response = await fetch(
-    `https://coinlytx.com/wp-json/wp/v2/posts?categories=21&per_page=${perPage}&_embed=1`,
+    `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=21&per_page=${perPage}&_embed=1`,
     {
       next: {
         revalidate: 300,
@@ -348,7 +356,7 @@ export async function getGlobalTrendingPosts(
   perPage: number = 8
 ): Promise<WordPressPost[]> {
   const categoryResponse = await fetch(
-    "https://coinlytx.com/wp-json/wp/v2/categories?slug=global-trending",
+    "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=global-trending",
     {
       next: {
         revalidate: 300,
@@ -375,7 +383,7 @@ export async function getGlobalTrendingPosts(
   const categoryId = categories[0].id;
 
   const postsResponse = await fetch(
-    `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
+    `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
     {
       next: {
         revalidate: 300,
@@ -401,7 +409,7 @@ export async function getCryptoNewsPosts(
   try {
     /* Find the Crypto News category by slug */
     const categoryResponse = await fetch(
-      "https://coinlytx.com/wp-json/wp/v2/categories?slug=crypto-news",
+      "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=crypto-news",
       {
         next: {
           revalidate: 300,
@@ -429,7 +437,7 @@ export async function getCryptoNewsPosts(
 
     /* Fetch posts from that category */
     const postsResponse = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
+      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
       {
         next: {
           revalidate: 300,
@@ -463,7 +471,7 @@ export async function getSponsoredPosts(
   try {
     /* Find Sponsored category dynamically */
     const categoryResponse = await fetch(
-      "https://coinlytx.com/wp-json/wp/v2/categories?slug=sponsored",
+      "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=sponsored",
       {
         next: {
           revalidate: 300,
@@ -491,7 +499,7 @@ export async function getSponsoredPosts(
 
     /* Fetch Sponsored posts */
     const postsResponse = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
+      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
       {
         next: {
           revalidate: 300,
@@ -524,7 +532,7 @@ export async function getLearnPosts(
 ): Promise<WordPressPost[]> {
   try {
     const categoryResponse = await fetch(
-      "https://coinlytx.com/wp-json/wp/v2/categories?slug=learn",
+      "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=learn",
       {
         next: {
           revalidate: 300,
@@ -548,7 +556,7 @@ export async function getLearnPosts(
     const categoryId = categories[0].id;
 
     const postsResponse = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
+      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
       {
         next: {
           revalidate: 300,
@@ -579,7 +587,7 @@ export async function getPriceAnalysisPosts(
 ): Promise<WordPressPost[]> {
   try {
     const categoryResponse = await fetch(
-      "https://coinlytx.com/wp-json/wp/v2/categories?slug=price-analysis",
+      "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=price-analysis",
       {
         next: {
           revalidate: 300,
@@ -605,7 +613,7 @@ export async function getPriceAnalysisPosts(
     const categoryId = categories[0].id;
 
     const postsResponse = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
+      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
       {
         next: {
           revalidate: 300,
@@ -657,7 +665,7 @@ async function getCategoryIdBySlug(
 ): Promise<number | null> {
   try {
     const response = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/categories?slug=${encodeURIComponent(
+      `https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=${encodeURIComponent(
         categorySlug
       )}`,
       {
@@ -731,7 +739,7 @@ export async function getArchivePosts(
     }
 
     const response = await fetch(
-      `https://coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&page=${safePage}&per_page=${safePerPage}&_embed=1`,
+      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&page=${safePage}&per_page=${safePerPage}&_embed=1`,
       {
         next: {
           revalidate: 300,
