@@ -3,7 +3,7 @@ import LiveCryptoMarket from "../components/LiveCryptoMarket";
 import FeaturedNewsCards from "../components/FeaturedNewsCards";
 import PressReleaseCarousel from "../components/PressReleaseCarousel";
 import CryptoNewsShowcase from "../components/CryptoNewsShowcase";
-import GlobalTrending from "../components/GlobalTrending";
+import GlobalTrendingSection from "../components/GlobalTrending";
 import SponsoredShowcase from "../components/SponsoredShowcase";
 import EditorialNewsGrid from "../components/EditorialNewsGrid";
 
@@ -27,9 +27,9 @@ export default async function Home() {
   let learnPosts: WordPressPost[] = [];
   let priceAnalysisPosts: WordPressPost[] = [];
 
-  /* =====================================================
-     LATEST POSTS
-  ===================================================== */
+  /* =========================================================
+     LOAD LATEST POSTS
+  ========================================================= */
 
   try {
     latestPosts = await getLatestPosts(9);
@@ -40,9 +40,9 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     PRESS RELEASES
-  ===================================================== */
+  /* =========================================================
+     LOAD PRESS RELEASES
+  ========================================================= */
 
   try {
     pressReleasePosts = await getPressReleasePosts(7);
@@ -53,9 +53,9 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     CRYPTO NEWS
-  ===================================================== */
+  /* =========================================================
+     LOAD CRYPTO NEWS
+  ========================================================= */
 
   try {
     cryptoNewsPosts = await getCryptoNewsPosts(8);
@@ -66,9 +66,9 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     GLOBAL TRENDING
-  ===================================================== */
+  /* =========================================================
+     LOAD GLOBAL TRENDING
+  ========================================================= */
 
   try {
     globalTrendingPosts = await getGlobalTrendingPosts(8);
@@ -79,9 +79,9 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     SPONSORED
-  ===================================================== */
+  /* =========================================================
+     LOAD SPONSORED POSTS
+  ========================================================= */
 
   try {
     sponsoredPosts = await getSponsoredPosts(6);
@@ -92,9 +92,9 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     LEARN
-  ===================================================== */
+  /* =========================================================
+     LOAD LEARN POSTS
+  ========================================================= */
 
   try {
     learnPosts = await getLearnPosts(15);
@@ -105,13 +105,12 @@ export default async function Home() {
     );
   }
 
-  /* =====================================================
-     PRICE ANALYSIS
-  ===================================================== */
+  /* =========================================================
+     LOAD PRICE ANALYSIS
+  ========================================================= */
 
   try {
-    priceAnalysisPosts =
-      await getPriceAnalysisPosts(15);
+    priceAnalysisPosts = await getPriceAnalysisPosts(15);
   } catch (error) {
     console.error(
       "Unable to load CoinlytX Price Analysis posts:",
@@ -121,43 +120,36 @@ export default async function Home() {
 
   return (
     <>
-      {/* =================================================
+      {/* =====================================================
           1. HERO
-      ================================================= */}
+      ====================================================== */}
 
       <Hero3D />
 
-
-      {/* =================================================
+      {/* =====================================================
           2. LIVE CRYPTO MARKET
-      ================================================= */}
+      ====================================================== */}
 
       <LiveCryptoMarket />
 
-
-      {/* =================================================
+      {/* =====================================================
           3. LATEST CRYPTO NEWS
-      ================================================= */}
+      ====================================================== */}
 
       {latestPosts.length > 0 && (
         <section className="homepage-news-section">
           <div className="homepage-news-heading">
             <div className="homepage-news-heading-copy">
-
               <span className="homepage-section-label">
                 LATEST FROM COINLYTX
               </span>
 
-              <h2>
-                Latest Crypto News
-              </h2>
+              <h2>Latest Crypto News</h2>
 
               <p className="homepage-news-description">
-                Market-moving stories, blockchain
-                developments, Web3 trends and the
-                latest from the crypto world.
+                Market-moving stories, blockchain developments,
+                Web3 trends and the latest from the crypto world.
               </p>
-
             </div>
 
             <a
@@ -165,23 +157,17 @@ export default async function Home() {
               className="homepage-view-all"
             >
               View All
-
-              <span aria-hidden="true">
-                →
-              </span>
+              <span aria-hidden="true">→</span>
             </a>
           </div>
 
-          <FeaturedNewsCards
-            posts={latestPosts}
-          />
+          <FeaturedNewsCards posts={latestPosts} />
         </section>
       )}
 
-
-      {/* =================================================
+      {/* =====================================================
           4. PRESS RELEASE
-      ================================================= */}
+      ====================================================== */}
 
       {pressReleasePosts.length > 0 && (
         <PressReleaseCarousel
@@ -189,10 +175,9 @@ export default async function Home() {
         />
       )}
 
-
-      {/* =================================================
+      {/* =====================================================
           5. CRYPTO NEWS
-      ================================================= */}
+      ====================================================== */}
 
       {cryptoNewsPosts.length > 0 && (
         <CryptoNewsShowcase
@@ -200,21 +185,19 @@ export default async function Home() {
         />
       )}
 
-
-      {/* =================================================
+      {/* =====================================================
           6. GLOBAL TRENDING
-      ================================================= */}
+      ====================================================== */}
 
       {globalTrendingPosts.length > 0 && (
-        <GlobalTrending
-          posts={globalTrendingPosts}
-        />
-      )}
+  <GlobalTrendingSection
+    posts={globalTrendingPosts}
+  />
+)}
 
-
-      {/* =================================================
+      {/* =====================================================
           7. SPONSORED
-      ================================================= */}
+      ====================================================== */}
 
       {sponsoredPosts.length > 0 && (
         <SponsoredShowcase
@@ -222,11 +205,9 @@ export default async function Home() {
         />
       )}
 
-
-      {/* =================================================
+      {/* =====================================================
           8. LEARN
-          CLEAN 3-COLUMN EDITORIAL LIST
-      ================================================= */}
+      ====================================================== */}
 
       {learnPosts.length > 0 && (
         <EditorialNewsGrid
@@ -237,11 +218,9 @@ export default async function Home() {
         />
       )}
 
-
-      {/* =================================================
+      {/* =====================================================
           9. PRICE ANALYSIS
-          CLEAN 3-COLUMN EDITORIAL LIST
-      ================================================= */}
+      ====================================================== */}
 
       {priceAnalysisPosts.length > 0 && (
         <EditorialNewsGrid
@@ -251,7 +230,6 @@ export default async function Home() {
           variant="analysis"
         />
       )}
-
     </>
   );
 }

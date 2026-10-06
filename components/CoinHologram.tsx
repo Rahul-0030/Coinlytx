@@ -75,9 +75,7 @@ function formatCompact(value: number | null) {
   }).format(value);
 }
 
-function formatPercent(
-  value: number | null | undefined
-) {
+function formatPercent(value: number | null | undefined) {
   if (value === null || value === undefined) {
     return "—";
   }
@@ -86,7 +84,7 @@ function formatPercent(
 }
 
 /* =========================================================
-   STAT
+   STAT CARD
 ========================================================= */
 
 function HoloStat({
@@ -97,14 +95,75 @@ function HoloStat({
   value: string;
 }) {
   return (
-    <div className="hx-stat">
-      <div className="hx-stat-corner" />
+    <div className="cxh-stat">
+      <div className="cxh-stat-corner" />
 
       <span>{label}</span>
 
       <strong>{value}</strong>
 
-      <div className="hx-stat-line" />
+      <div className="cxh-stat-scan" />
+    </div>
+  );
+}
+
+/* =========================================================
+   DECORATIVE HOLOGRAPHIC CANDLE CHART
+========================================================= */
+
+const candles = [
+  { height: 37, wick: 57, up: true },
+  { height: 58, wick: 78, up: true },
+  { height: 42, wick: 64, up: false },
+  { height: 67, wick: 88, up: true },
+  { height: 52, wick: 72, up: true },
+  { height: 43, wick: 67, up: false },
+  { height: 79, wick: 99, up: true },
+  { height: 70, wick: 91, up: true },
+  { height: 56, wick: 78, up: false },
+  { height: 88, wick: 108, up: true },
+  { height: 98, wick: 118, up: true },
+  { height: 73, wick: 95, up: false },
+  { height: 94, wick: 115, up: true },
+  { height: 111, wick: 132, up: true },
+];
+
+function HolographicChart() {
+  return (
+    <div className="cxh-chart">
+      <div className="cxh-chart-grid" />
+
+      <div className="cxh-chart-horizon" />
+
+      <div className="cxh-chart-orbit cxh-chart-orbit-one" />
+      <div className="cxh-chart-orbit cxh-chart-orbit-two" />
+
+      <div className="cxh-candles">
+        {candles.map((candle, index) => (
+          <div
+            className={`cxh-candle ${
+              candle.up ? "cxh-candle-up" : "cxh-candle-down"
+            }`}
+            key={index}
+          >
+            <i
+              className="cxh-candle-wick"
+              style={{
+                height: `${candle.wick}px`,
+              }}
+            />
+
+            <i
+              className="cxh-candle-body"
+              style={{
+                height: `${candle.height}px`,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="cxh-chart-floor" />
     </div>
   );
 }
@@ -119,10 +178,6 @@ export default function CoinHologram({
 }: CoinHologramProps) {
   const [mounted, setMounted] = useState(false);
 
-  /*
-   * Portal must only render after browser mounts.
-   * This avoids document/body problems with Next.js SSR.
-   */
   useEffect(() => {
     setMounted(true);
 
@@ -131,10 +186,6 @@ export default function CoinHologram({
     };
   }, []);
 
-  /*
-   * ESC can also close the hologram.
-   * We DO NOT disable body scrolling.
-   */
   useEffect(() => {
     if (!coin) return;
 
@@ -144,16 +195,10 @@ export default function CoinHologram({
       }
     }
 
-    window.addEventListener(
-      "keydown",
-      handleKeyDown
-    );
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener(
-        "keydown",
-        handleKeyDown
-      );
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [coin, onClose]);
 
@@ -168,136 +213,128 @@ export default function CoinHologram({
 
   const positive24 = change24 >= 0;
 
-  const change1h =
-    coin.price_change_percentage_1h_in_currency;
+  const change1h = coin.price_change_percentage_1h_in_currency;
 
-  const change7d =
-    coin.price_change_percentage_7d_in_currency;
+  const change7d = coin.price_change_percentage_7d_in_currency;
 
-  /* =======================================================
-     PORTAL
-  ======================================================= */
+  const symbol = coin.symbol.toUpperCase();
 
   return createPortal(
     <div
-      className="hx-overlay"
+      className="cxh-overlay"
       onClick={onClose}
       role="presentation"
     >
-      {/* ===============================================
+      {/* =====================================================
           BACKGROUND
-      ================================================ */}
+      ====================================================== */}
 
-      <div className="hx-grid" />
+      <div className="cxh-bg-grid" />
 
-      <div className="hx-scan" />
+      <div className="cxh-bg-glow cxh-bg-glow-one" />
+      <div className="cxh-bg-glow cxh-bg-glow-two" />
 
-      <div className="hx-noise" />
+      <div className="cxh-world">
+        <div className="cxh-world-ring cxh-world-ring-one" />
+        <div className="cxh-world-ring cxh-world-ring-two" />
+        <div className="cxh-world-ring cxh-world-ring-three" />
+      </div>
 
-      {/* futuristic HUD corners */}
+      <div className="cxh-scanline" />
 
-      <div className="hx-corner hx-corner-tl" />
+      {/* =====================================================
+          HUD CORNERS
+      ====================================================== */}
 
-      <div className="hx-corner hx-corner-tr" />
+      <div className="cxh-corner cxh-corner-tl" />
+      <div className="cxh-corner cxh-corner-tr" />
+      <div className="cxh-corner cxh-corner-bl" />
+      <div className="cxh-corner cxh-corner-br" />
 
-      <div className="hx-corner hx-corner-bl" />
+      {/* =====================================================
+          CLOSE MESSAGE
+      ====================================================== */}
 
-      <div className="hx-corner hx-corner-br" />
-
-      {/* ===============================================
-          TOP MESSAGE
-      ================================================ */}
-
-      <div className="hx-exit-hint">
+      <div className="cxh-close-message">
         CLICK ANYWHERE TO CLOSE
       </div>
 
-      {/* ===============================================
-          MAIN HOLOGRAPHIC TERMINAL
-      ================================================ */}
+      {/* =====================================================
+          TERMINAL
+      ====================================================== */}
 
-      <div className="hx-terminal">
+      <div
+        className="cxh-terminal"
+        onClick={(event) => {
+          /*
+           * We deliberately do not stop propagation.
+           * The user requested click-anywhere-to-close.
+           */
+          void event;
+        }}
+      >
+        {/* ===================================================
+            HEADER
+        ==================================================== */}
 
-        {/* =============================================
-            COIN IDENTITY
-        ============================================== */}
-
-        <div className="hx-coin">
-
-          <div className="hx-logo-wrap">
-
-            <div className="hx-logo-ring" />
+        <div className="cxh-header">
+          <div className="cxh-coin-logo">
+            <div className="cxh-logo-orbit cxh-logo-orbit-one" />
+            <div className="cxh-logo-orbit cxh-logo-orbit-two" />
 
             <img
               src={coin.image}
               alt={`${coin.name} logo`}
+              draggable={false}
             />
 
+            <i />
           </div>
 
-          <div className="hx-coin-info">
-
+          <div className="cxh-identity">
             <span>
-              MARKET #{coin.market_cap_rank ?? "—"}
-              {" // "}
-              {coin.symbol.toUpperCase()} / USD
+              MARKET #{coin.market_cap_rank ?? "—"} // {symbol} / USD
             </span>
 
             <h2>{coin.name}</h2>
-
           </div>
-
         </div>
 
-        {/* =============================================
-            LIVE PRICE
-        ============================================== */}
+        {/* ===================================================
+            PRICE
+        ==================================================== */}
 
-        <div className="hx-price">
-
-          <span className="hx-live">
-
+        <div className="cxh-price-block">
+          <div className="cxh-live">
             <i />
-
             LIVE MARKET
+          </div>
 
-          </span>
-
-          <strong>
+          <strong className="cxh-current-price">
             {formatPrice(coin.current_price)}
           </strong>
 
           <div
-            className={
-              positive24
-                ? "hx-change hx-up"
-                : "hx-change hx-down"
-            }
+            className={`cxh-price-change ${
+              positive24 ? "cxh-positive" : "cxh-negative"
+            }`}
           >
-
-            {positive24 ? "▲" : "▼"}
-
-            {" "}
+            <b>{positive24 ? "▲" : "▼"}</b>
 
             {formatPercent(change24)}
 
             <span>24H</span>
-
           </div>
-
         </div>
 
-        {/* =============================================
-            LEFT MARKET DATA
-        ============================================== */}
+        {/* ===================================================
+            LEFT STATS
+        ==================================================== */}
 
-        <div className="hx-stats hx-stats-left">
-
+        <div className="cxh-stats cxh-stats-left">
           <HoloStat
             label="24H HIGH"
-            value={formatPrice(
-              coin.high_24h
-            )}
+            value={formatPrice(coin.high_24h)}
           />
 
           <HoloStat
@@ -305,17 +342,13 @@ export default function CoinHologram({
             value={
               coin.market_cap === null
                 ? "—"
-                : `$${formatCompact(
-                    coin.market_cap
-                  )}`
+                : `$${formatCompact(coin.market_cap)}`
             }
           />
 
           <HoloStat
             label="ALL-TIME HIGH"
-            value={formatPrice(
-              coin.ath
-            )}
+            value={formatPrice(coin.ath)}
           />
 
           <HoloStat
@@ -325,23 +358,19 @@ export default function CoinHologram({
                 ? "—"
                 : `${formatCompact(
                     coin.circulating_supply
-                  )} ${coin.symbol.toUpperCase()}`
+                  )} ${symbol}`
             }
           />
-
         </div>
 
-        {/* =============================================
-            RIGHT MARKET DATA
-        ============================================== */}
+        {/* ===================================================
+            RIGHT STATS
+        ==================================================== */}
 
-        <div className="hx-stats hx-stats-right">
-
+        <div className="cxh-stats cxh-stats-right">
           <HoloStat
             label="24H LOW"
-            value={formatPrice(
-              coin.low_24h
-            )}
+            value={formatPrice(coin.low_24h)}
           />
 
           <HoloStat
@@ -349,17 +378,13 @@ export default function CoinHologram({
             value={
               coin.total_volume === null
                 ? "—"
-                : `$${formatCompact(
-                    coin.total_volume
-                  )}`
+                : `$${formatCompact(coin.total_volume)}`
             }
           />
 
           <HoloStat
             label="ALL-TIME LOW"
-            value={formatPrice(
-              coin.atl
-            )}
+            value={formatPrice(coin.atl)}
           />
 
           <HoloStat
@@ -367,173 +392,85 @@ export default function CoinHologram({
             value={
               coin.total_supply === null
                 ? "—"
-                : `${formatCompact(
-                    coin.total_supply
-                  )} ${coin.symbol.toUpperCase()}`
+                : `${formatCompact(coin.total_supply)} ${symbol}`
             }
           />
-
         </div>
 
-        {/* =============================================
-            HOLOGRAPHIC CHART
-        ============================================== */}
+        {/* ===================================================
+            CENTER PROJECTION
+        ==================================================== */}
 
-        <div className="hx-chart">
+        <div className="cxh-projection">
+          <div className="cxh-projection-labels">
+            <span>LIVE PROJECTION</span>
 
-          <div className="hx-chart-grid" />
-
-          <div className="hx-chart-top">
-
-            <span>
-              LIVE PROJECTION
-            </span>
-
-            <i>
-              {coin.symbol.toUpperCase()}
-              /USD
-            </i>
-
+            <i>{symbol}/USD</i>
           </div>
 
-          {/* decorative candles for now */}
+          <div className="cxh-light-beam" />
 
-          <div className="hx-candles">
-
-            <i className="hx-candle green h1" />
-
-            <i className="hx-candle green h2" />
-
-            <i className="hx-candle red h3" />
-
-            <i className="hx-candle green h4" />
-
-            <i className="hx-candle green h5" />
-
-            <i className="hx-candle red h6" />
-
-            <i className="hx-candle green h7" />
-
-            <i className="hx-candle green h8" />
-
-            <i className="hx-candle red h9" />
-
-            <i className="hx-candle green h10" />
-
-            <i className="hx-candle green h11" />
-
-            <i className="hx-candle red h12" />
-
-            <i className="hx-candle green h13" />
-
-            <i className="hx-candle green h14" />
-
-          </div>
-
-          <div className="hx-chart-glow" />
-
+          <HolographicChart />
         </div>
 
-        {/* =============================================
-            PERFORMANCE PERIODS
-        ============================================== */}
+        {/* ===================================================
+            PERFORMANCE
+        ==================================================== */}
 
-        <div className="hx-periods">
-
+        <div className="cxh-periods">
           <div>
-
-            <span>
-              1 HOUR
-            </span>
+            <span>1 HOUR</span>
 
             <strong
               className={
                 (change1h ?? 0) >= 0
-                  ? "hx-up"
-                  : "hx-down"
+                  ? "cxh-positive"
+                  : "cxh-negative"
               }
             >
               {formatPercent(change1h)}
             </strong>
-
           </div>
 
-          <div>
-
-            <span>
-              24 HOURS
-            </span>
+          <div className="cxh-period-active">
+            <span>24 HOURS</span>
 
             <strong
               className={
-                positive24
-                  ? "hx-up"
-                  : "hx-down"
+                positive24 ? "cxh-positive" : "cxh-negative"
               }
             >
               {formatPercent(change24)}
             </strong>
-
           </div>
 
           <div>
-
-            <span>
-              7 DAYS
-            </span>
+            <span>7 DAYS</span>
 
             <strong
               className={
                 (change7d ?? 0) >= 0
-                  ? "hx-up"
-                  : "hx-down"
+                  ? "cxh-positive"
+                  : "cxh-negative"
               }
             >
               {formatPercent(change7d)}
             </strong>
-
           </div>
-
         </div>
 
-        {/* =============================================
-            PROJECTION LIGHT BEAM
-        ============================================== */}
+        {/* ===================================================
+            SYSTEM NAME
+        ==================================================== */}
 
-        <div className="hx-beam" />
-
-        {/* =============================================
-            HOLOGRAPHIC PROJECTOR BASE
-        ============================================== */}
-
-        <div className="hx-base">
-
-          <div className="hx-base-ring ring1" />
-
-          <div className="hx-base-ring ring2" />
-
-          <div className="hx-base-ring ring3" />
-
-          <div className="hx-emitter" />
-
-        </div>
-
-        {/* =============================================
-            SYSTEM LABEL
-        ============================================== */}
-
-        <div className="hx-system">
-
+        <div className="cxh-system">
           <span />
 
           COINLYTX MARKET INTELLIGENCE
 
           <span />
-
         </div>
-
       </div>
-
     </div>,
 
     document.body

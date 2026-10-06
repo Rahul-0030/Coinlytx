@@ -1,6 +1,12 @@
 "use client";
 
-import { Canvas, ThreeEvent, useFrame } from "@react-three/fiber";
+import {
+  Canvas,
+  ThreeEvent,
+  useFrame,
+  useThree,
+} from "@react-three/fiber";
+
 import { Html, Line } from "@react-three/drei";
 import { feature } from "topojson-client";
 import worldData from "world-atlas/countries-110m.json";
@@ -44,6 +50,9 @@ type DragState = {
   dragging: boolean;
   moved: boolean;
 
+  startX: number;
+  startY: number;
+
   lastX: number;
   lastY: number;
   lastTime: number;
@@ -55,12 +64,31 @@ type DragState = {
   angularPitch: number;
 };
 
+type PointerPosition = {
+  x: number;
+  y: number;
+};
+
 /* =========================================================
-   SETTINGS
+   GLOBE SETTINGS
+
+   IMPORTANT:
+   Camera distance is deliberately farther back so the
+   complete globe remains visible without clipping.
 ========================================================= */
 
 const GLOBE_RADIUS = 2;
-const GLOBE_SCALE = 0.85;
+const GLOBE_SCALE = 0.9;
+
+const MIN_CAMERA_Z = 5.45;
+const MAX_CAMERA_Z = 8.5;
+const DEFAULT_CAMERA_Z = 6.15;
+
+const DIGITAL_POINT_COUNT = 420;
+
+/* =========================================================
+   REGIONS
+========================================================= */
 
 const REGIONS: RegionPoint[] = [
   {
@@ -104,7 +132,10 @@ function clamp(
   min: number,
   max: number
 ) {
-  return Math.min(max, Math.max(min, value));
+  return Math.min(
+    max,
+    Math.max(min, value)
+  );
 }
 
 function geoToVector(
@@ -113,17 +144,20 @@ function geoToVector(
   radius = GLOBE_RADIUS
 ) {
   const phi =
-    (90 - lat) * (Math.PI / 180);
+    (90 - lat) *
+    (Math.PI / 180);
 
   const theta =
-    (lon + 180) * (Math.PI / 180);
+    (lon + 180) *
+    (Math.PI / 180);
 
   return new THREE.Vector3(
     -radius *
       Math.sin(phi) *
       Math.cos(theta),
 
-    radius * Math.cos(phi),
+    radius *
+      Math.cos(phi),
 
     radius *
       Math.sin(phi) *
@@ -132,7 +166,7 @@ function geoToVector(
 }
 
 /* =========================================================
-   COUNTRY LINES
+   COUNTRY BORDERS
 ========================================================= */
 
 function getCountryLines() {
@@ -147,8 +181,45 @@ function getCountryLines() {
     function addRing(
       coordinates: number[][]
     ) {
+      if (
+        !coordinates ||
+        coordinates.length < 4
+      ) {
+        return;
+      }
+
+      let step = 1;
+
+      if (coordinates.length > 240) {
+        step = 5;
+      } else if (
+        coordinates.length > 140
+      ) {
+        step = 4;
+      } else if (
+        coordinates.length > 80
+      ) {
+        step = 3;
+      } else if (
+        coordinates.length > 40
+      ) {
+        step = 2;
+      }
+
+      const simplified =
+        coordinates.filter(
+          (_, index) =>
+            index % step === 0 ||
+            index ===
+              coordinates.length - 1
+        );
+
+      if (simplified.length < 3) {
+        return;
+      }
+
       const points =
-        coordinates.map(
+        simplified.map(
           ([lon, lat]) =>
             geoToVector(
               lat,
@@ -157,9 +228,7 @@ function getCountryLines() {
             )
         );
 
-      if (points.length > 1) {
-        lines.push(points);
-      }
+      lines.push(points);
     }
 
     geoJson.features.forEach(
@@ -167,15 +236,18 @@ function getCountryLines() {
         const geometry =
           country.geometry;
 
-        if (!geometry) return;
+        if (!geometry) {
+          return;
+        }
 
         if (
           geometry.type ===
           "Polygon"
         ) {
           geometry.coordinates.forEach(
-            (ring: number[][]) =>
-              addRing(ring)
+            (ring: number[][]) => {
+              addRing(ring);
+            }
           );
         }
 
@@ -184,10 +256,15 @@ function getCountryLines() {
           "MultiPolygon"
         ) {
           geometry.coordinates.forEach(
-            (polygon: number[][][]) => {
+            (
+              polygon: number[][][]
+            ) => {
               polygon.forEach(
-                (ring: number[][]) =>
-                  addRing(ring)
+                (
+                  ring: number[][]
+                ) => {
+                  addRing(ring);
+                }
               );
             }
           );
@@ -207,7 +284,7 @@ function getCountryLines() {
 }
 
 /* =========================================================
-   WORLD MAP
+   REAL WORLD MAP
 ========================================================= */
 
 function RealWorldMap() {
@@ -224,9 +301,9 @@ function RealWorldMap() {
             key={index}
             points={points}
             color="#24cfff"
-            lineWidth={0.9}
+            lineWidth={0.75}
             transparent
-            opacity={0.88}
+            opacity={0.82}
           />
         )
       )}
@@ -235,42 +312,41 @@ function RealWorldMap() {
 }
 
 /* =========================================================
-   GRID
+   GLOBE GRID
 ========================================================= */
 
 function GlobeGrid() {
-  const latitudes =
-    useMemo(() => {
-      const result:
-        THREE.Vector3[][] = [];
+  const latitudes = useMemo(() => {
+    const result:
+      THREE.Vector3[][] = [];
+
+    for (
+      let lat = -60;
+      lat <= 60;
+      lat += 40
+    ) {
+      const points:
+        THREE.Vector3[] = [];
 
       for (
-        let lat = -60;
-        lat <= 60;
-        lat += 30
+        let lon = -180;
+        lon <= 180;
+        lon += 12
       ) {
-        const points:
-          THREE.Vector3[] = [];
-
-        for (
-          let lon = -180;
-          lon <= 180;
-          lon += 7
-        ) {
-          points.push(
-            geoToVector(
-              lat,
-              lon,
-              GLOBE_RADIUS + 0.01
-            )
-          );
-        }
-
-        result.push(points);
+        points.push(
+          geoToVector(
+            lat,
+            lon,
+            GLOBE_RADIUS + 0.01
+          )
+        );
       }
 
-      return result;
-    }, []);
+      result.push(points);
+    }
+
+    return result;
+  }, []);
 
   const longitudes =
     useMemo(() => {
@@ -280,15 +356,15 @@ function GlobeGrid() {
       for (
         let lon = -150;
         lon <= 180;
-        lon += 30
+        lon += 45
       ) {
         const points:
           THREE.Vector3[] = [];
 
         for (
-          let lat = -87;
-          lat <= 87;
-          lat += 6
+          let lat = -85;
+          lat <= 85;
+          lat += 10
         ) {
           points.push(
             geoToVector(
@@ -313,9 +389,9 @@ function GlobeGrid() {
             key={`lat-${index}`}
             points={points}
             color="#20a8ff"
-            lineWidth={0.45}
+            lineWidth={0.4}
             transparent
-            opacity={0.28}
+            opacity={0.22}
           />
         )
       )}
@@ -326,9 +402,9 @@ function GlobeGrid() {
             key={`lon-${index}`}
             points={points}
             color="#20a8ff"
-            lineWidth={0.45}
+            lineWidth={0.4}
             transparent
-            opacity={0.24}
+            opacity={0.2}
           />
         )
       )}
@@ -343,7 +419,8 @@ function GlobeGrid() {
 function DigitalSurface() {
   const positions =
     useMemo(() => {
-      const count = 1000;
+      const count =
+        DIGITAL_POINT_COUNT;
 
       const values =
         new Float32Array(
@@ -357,8 +434,7 @@ function DigitalSurface() {
       ) {
         const y =
           1 -
-          (i / (count - 1)) *
-            2;
+          (i / (count - 1)) * 2;
 
         const horizontalRadius =
           Math.sqrt(
@@ -398,15 +474,18 @@ function DigitalSurface() {
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          args={[positions, 3]}
+          args={[
+            positions,
+            3,
+          ]}
         />
       </bufferGeometry>
 
       <pointsMaterial
         color="#53e7ff"
-        size={0.022}
+        size={0.025}
         transparent
-        opacity={0.58}
+        opacity={0.5}
         depthWrite={false}
         sizeAttenuation
       />
@@ -415,10 +494,7 @@ function DigitalSurface() {
 }
 
 /* =========================================================
-   CLICK REGION FROM GLOBE SURFACE
-
-   This makes the globe itself clickable.
-   User does NOT need to hit the small marker.
+   FIND NEAREST REGION
 ========================================================= */
 
 function findNearestRegion(
@@ -437,7 +513,9 @@ function findNearestRegion(
 
   let bestScore = -Infinity;
 
-  for (const region of REGIONS) {
+  for (
+    const region of REGIONS
+  ) {
     const regionDirection =
       geoToVector(
         region.lat,
@@ -469,22 +547,24 @@ function Earth({
   onRegionChange,
 }: {
   globeRef:
-    MutableRefObject<THREE.Group | null>;
+    MutableRefObject<
+      THREE.Group | null
+    >;
 
   dragState:
-    MutableRefObject<DragState>;
+    MutableRefObject<
+      DragState
+    >;
 
   onRegionChange:
-    (region: TrendingRegion) => void;
+    (
+      region: TrendingRegion
+    ) => void;
 }) {
-  function handleEarthClick(
-    event: ThreeEvent<MouseEvent>
+  function selectRegion(
+    event:
+      ThreeEvent<PointerEvent>
   ) {
-    /*
-      Do not select a region when
-      the user was dragging.
-    */
-
     if (
       dragState.current.moved
     ) {
@@ -497,15 +577,11 @@ function Earth({
       return;
     }
 
-    /*
-      Convert clicked world position
-      into local globe coordinates.
-    */
-
     const localPoint =
-      globeRef.current.worldToLocal(
-        event.point.clone()
-      );
+      globeRef.current
+        .worldToLocal(
+          event.point.clone()
+        );
 
     const region =
       findNearestRegion(
@@ -517,66 +593,46 @@ function Earth({
 
   return (
     <group>
-      {/* Main clickable Earth */}
 
       <mesh
-        onClick={
-          handleEarthClick
+        onPointerUp={
+          selectRegion
         }
       >
         <sphereGeometry
           args={[
             GLOBE_RADIUS,
-            56,
-            56,
+            40,
+            40,
           ]}
         />
 
         <meshStandardMaterial
           color="#063e79"
           emissive="#031f48"
-          emissiveIntensity={0.5}
+          emissiveIntensity={
+            0.45
+          }
           transparent
-          opacity={0.68}
-          roughness={0.38}
-          metalness={0.18}
+          opacity={0.7}
+          roughness={0.4}
+          metalness={0.15}
         />
       </mesh>
 
-      {/* Inner dark core */}
-
-      <mesh scale={0.982}>
+      <mesh scale={0.98}>
         <sphereGeometry
           args={[
             GLOBE_RADIUS,
-            40,
-            40,
+            28,
+            28,
           ]}
         />
 
         <meshBasicMaterial
           color="#021329"
           transparent
-          opacity={0.72}
-        />
-      </mesh>
-
-      {/* inner cyan glass layer */}
-
-      <mesh scale={0.991}>
-        <sphereGeometry
-          args={[
-            GLOBE_RADIUS,
-            36,
-            36,
-          ]}
-        />
-
-        <meshBasicMaterial
-          color="#0b6aa0"
-          transparent
-          opacity={0.11}
-          depthWrite={false}
+          opacity={0.68}
         />
       </mesh>
 
@@ -585,6 +641,7 @@ function Earth({
       <DigitalSurface />
 
       <RealWorldMap />
+
     </group>
   );
 }
@@ -595,7 +652,9 @@ function Earth({
 
 function Atmosphere() {
   const atmosphere =
-    useRef<THREE.Mesh>(null);
+    useRef<THREE.Mesh>(
+      null
+    );
 
   useFrame((state) => {
     if (!atmosphere.current) {
@@ -604,34 +663,35 @@ function Atmosphere() {
 
     const material =
       atmosphere.current
-        .material as THREE.MeshBasicMaterial;
+        .material as
+        THREE.MeshBasicMaterial;
 
     material.opacity =
-      0.13 +
+      0.11 +
       Math.sin(
-        state.clock.elapsedTime *
-          1.2
+        state.clock
+          .elapsedTime * 0.9
       ) *
-        0.025;
+        0.018;
   });
 
   return (
     <mesh
       ref={atmosphere}
-      scale={1.055}
+      scale={1.045}
     >
       <sphereGeometry
         args={[
           GLOBE_RADIUS,
-          40,
-          40,
+          28,
+          28,
         ]}
       />
 
       <meshBasicMaterial
         color="#18d7ff"
         transparent
-        opacity={0.14}
+        opacity={0.12}
         side={THREE.BackSide}
         depthWrite={false}
       />
@@ -640,21 +700,26 @@ function Atmosphere() {
 }
 
 /* =========================================================
-   SCANNING RING
+   SCANNER
 ========================================================= */
 
 function Scanner() {
   const scanner =
-    useRef<THREE.Mesh>(null);
+    useRef<THREE.Mesh>(
+      null
+    );
 
-  useFrame((_, delta) => {
-    if (!scanner.current) {
-      return;
+  useFrame(
+    (_, delta) => {
+      if (!scanner.current) {
+        return;
+      }
+
+      scanner.current
+        .rotation.z +=
+        delta * 0.1;
     }
-
-    scanner.current.rotation.z +=
-      delta * 0.13;
-  });
+  );
 
   return (
     <mesh
@@ -667,17 +732,17 @@ function Scanner() {
     >
       <torusGeometry
         args={[
-          2.18,
+          2.16,
           0.009,
-          5,
-          90,
+          4,
+          56,
         ]}
       />
 
       <meshBasicMaterial
         color="#25dcff"
         transparent
-        opacity={0.55}
+        opacity={0.48}
         depthWrite={false}
       />
     </mesh>
@@ -692,13 +757,10 @@ const DATA_POINTS = [
   [40.71, -74],
   [37.77, -122.41],
   [51.5, -0.12],
-  [48.85, 2.35],
   [25.2, 55.27],
   [19.07, 72.87],
   [1.35, 103.81],
   [35.67, 139.65],
-  [22.31, 114.16],
-  [-33.86, 151.2],
   [-23.55, -46.63],
 ];
 
@@ -706,7 +768,10 @@ function DataLights() {
   return (
     <group>
       {DATA_POINTS.map(
-        ([lat, lon], index) => {
+        (
+          [lat, lon],
+          index
+        ) => {
           const position =
             geoToVector(
               lat,
@@ -718,13 +783,15 @@ function DataLights() {
           return (
             <mesh
               key={index}
-              position={position}
+              position={
+                position
+              }
             >
               <sphereGeometry
                 args={[
                   0.035,
-                  8,
-                  8,
+                  6,
+                  6,
                 ]}
               />
 
@@ -740,7 +807,7 @@ function DataLights() {
 }
 
 /* =========================================================
-   REGION HOTSPOTS
+   REGION HOTSPOT
 ========================================================= */
 
 function RegionHotspot({
@@ -754,13 +821,19 @@ function RegionHotspot({
   onSelect: () => void;
 
   dragState:
-    MutableRefObject<DragState>;
+    MutableRefObject<
+      DragState
+    >;
 }) {
-  const [hovered, setHovered] =
-    useState(false);
+  const [
+    hovered,
+    setHovered,
+  ] = useState(false);
 
   const pulse =
-    useRef<THREE.Mesh>(null);
+    useRef<THREE.Mesh>(
+      null
+    );
 
   const position =
     useMemo(
@@ -768,7 +841,8 @@ function RegionHotspot({
         geoToVector(
           region.lat,
           region.lon,
-          GLOBE_RADIUS + 0.11
+          GLOBE_RADIUS +
+            0.11
         ),
       [
         region.lat,
@@ -781,31 +855,45 @@ function RegionHotspot({
       return;
     }
 
-    const pulseAmount =
+    const amount =
       1 +
       Math.sin(
-        state.clock.elapsedTime *
-          2.5
+        state.clock
+          .elapsedTime * 2
       ) *
-        0.18;
+        0.14;
 
-    pulse.current.scale.setScalar(
-      pulseAmount
-    );
+    pulse.current
+      .scale.setScalar(
+        amount
+      );
   });
 
-  return (
-    <group position={position}>
-      {/* main visible marker */}
+  function handleSelect(
+    event:
+      ThreeEvent<PointerEvent>
+  ) {
+    event.stopPropagation();
 
+    if (
+      !dragState.current.moved
+    ) {
+      onSelect();
+    }
+  }
+
+  return (
+    <group
+      position={position}
+    >
       <mesh>
         <sphereGeometry
           args={[
             active
-              ? 0.075
-              : 0.058,
-            12,
-            12,
+              ? 0.085
+              : 0.065,
+            8,
+            8,
           ]}
         />
 
@@ -818,16 +906,14 @@ function RegionHotspot({
         />
       </mesh>
 
-      {/* glow halo */}
-
       <mesh ref={pulse}>
         <sphereGeometry
           args={[
             active
-              ? 0.13
-              : 0.105,
-            12,
-            12,
+              ? 0.14
+              : 0.11,
+            8,
+            8,
           ]}
         />
 
@@ -840,14 +926,12 @@ function RegionHotspot({
           transparent
           opacity={
             active
-              ? 0.24
-              : 0.16
+              ? 0.25
+              : 0.15
           }
           depthWrite={false}
         />
       </mesh>
-
-      {/* larger invisible target */}
 
       <mesh
         onPointerEnter={(
@@ -859,22 +943,15 @@ function RegionHotspot({
         onPointerLeave={() => {
           setHovered(false);
         }}
-        onClick={(event) => {
-          event.stopPropagation();
-
-          if (
-            !dragState.current
-              .moved
-          ) {
-            onSelect();
-          }
-        }}
+        onPointerUp={
+          handleSelect
+        }
       >
         <sphereGeometry
           args={[
-            0.32,
-            10,
-            10,
+            0.42,
+            8,
+            8,
           ]}
         />
 
@@ -890,7 +967,7 @@ function RegionHotspot({
           center
           position={[
             0,
-            0.25,
+            0.27,
             0,
           ]}
           distanceFactor={8}
@@ -925,96 +1002,118 @@ function RotatableGlobe({
   dragState,
 }: GlobeProps & {
   dragState:
-    MutableRefObject<DragState>;
+    MutableRefObject<
+      DragState
+    >;
 }) {
   const globe =
-    useRef<THREE.Group>(null);
+    useRef<THREE.Group>(
+      null
+    );
 
-  useFrame((_, delta) => {
-    if (!globe.current) {
-      return;
-    }
+  useFrame(
+    (_, delta) => {
+      if (!globe.current) {
+        return;
+      }
 
-    const drag =
-      dragState.current;
+      const drag =
+        dragState.current;
 
-    /* direct drag */
+      /* DIRECT DRAG */
 
-    if (
-      drag.pendingYaw !== 0 ||
-      drag.pendingPitch !== 0
-    ) {
-      globe.current.rotation.y +=
-        drag.pendingYaw;
+      if (
+        drag.pendingYaw !== 0 ||
+        drag.pendingPitch !== 0
+      ) {
+        globe.current
+          .rotation.y +=
+          drag.pendingYaw;
 
-      globe.current.rotation.x +=
-        drag.pendingPitch;
+        globe.current
+          .rotation.x +=
+          drag.pendingPitch;
 
-      drag.pendingYaw = 0;
-      drag.pendingPitch = 0;
+        drag.pendingYaw = 0;
+        drag.pendingPitch = 0;
 
-      globe.current.rotation.x =
-        clamp(
-          globe.current.rotation.x,
-          -1.05,
-          1.05
-        );
-    }
-
-    /* inertia */
-
-    if (!drag.dragging) {
-      const hasMomentum =
-        Math.abs(
-          drag.angularYaw
-        ) > 0.002 ||
-        Math.abs(
-          drag.angularPitch
-        ) > 0.002;
-
-      if (hasMomentum) {
-        globe.current.rotation.y +=
-          drag.angularYaw *
-          delta;
-
-        globe.current.rotation.x +=
-          drag.angularPitch *
-          delta;
-
-        globe.current.rotation.x =
+        globe.current
+          .rotation.x =
           clamp(
-            globe.current.rotation.x,
+            globe.current
+              .rotation.x,
             -1.05,
             1.05
           );
+      }
 
-        const friction =
-          Math.exp(
-            -4.1 * delta
-          );
+      /* MOMENTUM */
 
-        drag.angularYaw *=
-          friction;
+      if (!drag.dragging) {
+        const hasMomentum =
+          Math.abs(
+            drag.angularYaw
+          ) > 0.003 ||
+          Math.abs(
+            drag.angularPitch
+          ) > 0.003;
 
-        drag.angularPitch *=
-          friction;
-      } else {
-        /* gentle idle rotation */
+        if (hasMomentum) {
+          globe.current
+            .rotation.y +=
+            drag.angularYaw *
+            delta;
 
-        globe.current.rotation.y +=
-          delta * 0.065;
+          globe.current
+            .rotation.x +=
+            drag.angularPitch *
+            delta;
 
-        drag.angularYaw = 0;
-        drag.angularPitch = 0;
+          globe.current
+            .rotation.x =
+            clamp(
+              globe.current
+                .rotation.x,
+              -1.05,
+              1.05
+            );
+
+          const friction =
+            Math.exp(
+              -4.4 * delta
+            );
+
+          drag.angularYaw *=
+            friction;
+
+          drag.angularPitch *=
+            friction;
+        } else {
+          globe.current
+            .rotation.y +=
+            delta * 0.018;
+
+          drag.angularYaw = 0;
+          drag.angularPitch = 0;
+        }
       }
     }
-  });
+  );
 
   return (
     <group
       ref={globe}
       scale={GLOBE_SCALE}
-      position={[0, 0.08, 0]}
+
+      /* IMPORTANT:
+         Perfectly centered vertically.
+      */
+      position={[
+        0,
+        0,
+        0,
+      ]}
+
       rotation={[
         0.1,
         -0.55,
@@ -1023,7 +1122,9 @@ function RotatableGlobe({
     >
       <Earth
         globeRef={globe}
-        dragState={dragState}
+        dragState={
+          dragState
+        }
         onRegionChange={
           onRegionChange
         }
@@ -1065,22 +1166,27 @@ function RotatableGlobe({
 
 function HolographicBase() {
   const ring =
-    useRef<THREE.Mesh>(null);
+    useRef<THREE.Mesh>(
+      null
+    );
 
-  useFrame((_, delta) => {
-    if (!ring.current) {
-      return;
+  useFrame(
+    (_, delta) => {
+      if (!ring.current) {
+        return;
+      }
+
+      ring.current
+        .rotation.z -=
+        delta * 0.08;
     }
-
-    ring.current.rotation.z -=
-      delta * 0.14;
-  });
+  );
 
   return (
     <group
       position={[
         0,
-        -1.85,
+        -1.75,
         0,
       ]}
       rotation={[
@@ -1092,16 +1198,16 @@ function HolographicBase() {
       <mesh>
         <ringGeometry
           args={[
-            1.2,
-            2.25,
-            64,
+            1.25,
+            2.1,
+            40,
           ]}
         />
 
         <meshBasicMaterial
           color="#0a8fff"
           transparent
-          opacity={0.14}
+          opacity={0.11}
           side={
             THREE.DoubleSide
           }
@@ -1112,22 +1218,70 @@ function HolographicBase() {
       <mesh ref={ring}>
         <torusGeometry
           args={[
-            1.7,
+            1.65,
             0.018,
-            6,
-            80,
+            4,
+            48,
           ]}
         />
 
         <meshBasicMaterial
           color="#3ee8ff"
           transparent
-          opacity={0.68}
+          opacity={0.58}
           depthWrite={false}
         />
       </mesh>
     </group>
   );
+}
+
+/* =========================================================
+   CAMERA
+========================================================= */
+
+function ZoomCamera({
+  zoom,
+}: {
+  zoom: number;
+}) {
+  const { camera } =
+    useThree();
+
+  useFrame(
+    (_, delta) => {
+      const difference =
+        Math.abs(
+          camera.position.z -
+            zoom
+        );
+
+      if (
+        difference > 0.001
+      ) {
+        camera.position.z =
+          THREE.MathUtils.damp(
+            camera.position.z,
+            zoom,
+            8,
+            delta
+          );
+
+        /*
+         * Keep the camera centered.
+         * This prevents vertical offset.
+         */
+        camera.position.x = 0;
+        camera.position.y = 0;
+
+        camera.lookAt(0, 0, 0);
+
+        camera.updateProjectionMatrix();
+      }
+    }
+  );
+
+  return null;
 }
 
 /* =========================================================
@@ -1138,26 +1292,33 @@ function Scene({
   activeRegion,
   onRegionChange,
   dragState,
+  zoom,
 }: GlobeProps & {
   dragState:
-    MutableRefObject<DragState>;
+    MutableRefObject<
+      DragState
+    >;
+
+  zoom: number;
 }) {
   return (
     <>
+      <ZoomCamera
+        zoom={zoom}
+      />
+
       <ambientLight
-        intensity={1.25}
+        intensity={1.15}
       />
 
       <directionalLight
-        position={[4, 5, 6]}
-        intensity={1.65}
+        position={[
+          4,
+          5,
+          6,
+        ]}
+        intensity={1.55}
         color="#b6f7ff"
-      />
-
-      <directionalLight
-        position={[-4, 0, 3]}
-        intensity={0.75}
-        color="#248dff"
       />
 
       <RotatableGlobe
@@ -1167,7 +1328,9 @@ function Scene({
         onRegionChange={
           onRegionChange
         }
-        dragState={dragState}
+        dragState={
+          dragState
+        }
       />
 
       <HolographicBase />
@@ -1193,6 +1356,9 @@ export default function GlobalTrendingGlobe({
       dragging: false,
       moved: false,
 
+      startX: 0,
+      startY: 0,
+
       lastX: 0,
       lastY: 0,
       lastTime: 0,
@@ -1202,6 +1368,22 @@ export default function GlobalTrendingGlobe({
 
       angularYaw: 0,
       angularPitch: 0,
+    });
+
+  const activePointers =
+    useRef(
+      new Map<
+        number,
+        PointerPosition
+      >()
+    );
+
+  const pinchState =
+    useRef({
+      active: false,
+      startDistance: 0,
+      startZoom:
+        DEFAULT_CAMERA_Z,
     });
 
   const [
@@ -1214,17 +1396,43 @@ export default function GlobalTrendingGlobe({
     setIsVisible,
   ] = useState(false);
 
+  const [
+    zoom,
+    setZoom,
+  ] = useState(
+    DEFAULT_CAMERA_Z
+  );
+
+  const zoomRef =
+    useRef(
+      DEFAULT_CAMERA_Z
+    );
+
+  function updateZoom(
+    value: number
+  ) {
+    const next =
+      clamp(
+        value,
+        MIN_CAMERA_Z,
+        MAX_CAMERA_Z
+      );
+
+    zoomRef.current = next;
+    setZoom(next);
+  }
+
   /* =======================================================
-     PERFORMANCE:
-     only run Three.js when section
-     is near viewport
+     LOAD ONLY NEAR VIEWPORT
   ======================================================= */
 
   useEffect(() => {
     const element =
       containerRef.current;
 
-    if (!element) return;
+    if (!element) {
+      return;
+    }
 
     const observer =
       new IntersectionObserver(
@@ -1235,35 +1443,155 @@ export default function GlobalTrendingGlobe({
         },
         {
           rootMargin:
-            "250px 0px 250px 0px",
+            "100px 0px 100px 0px",
 
           threshold: 0.01,
         }
       );
 
-    observer.observe(element);
+    observer.observe(
+      element
+    );
 
-    return () =>
+    return () => {
       observer.disconnect();
+    };
   }, []);
 
   /* =======================================================
-     DRAG START
+     WHEEL ZOOM
+  ======================================================= */
+
+  useEffect(() => {
+    const element =
+      containerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    function handleWheel(
+      event: WheelEvent
+    ) {
+      event.preventDefault();
+
+      updateZoom(
+        zoomRef.current +
+          event.deltaY *
+            0.0035
+      );
+    }
+
+    element.addEventListener(
+      "wheel",
+      handleWheel,
+      {
+        passive: false,
+      }
+    );
+
+    return () => {
+      element.removeEventListener(
+        "wheel",
+        handleWheel
+      );
+    };
+  }, []);
+
+  /* =======================================================
+     PINCH HELPER
+  ======================================================= */
+
+  function getPointerDistance() {
+    const pointers =
+      Array.from(
+        activePointers.current
+          .values()
+      );
+
+    if (pointers.length < 2) {
+      return 0;
+    }
+
+    const first =
+      pointers[0];
+
+    const second =
+      pointers[1];
+
+    const dx =
+      second.x - first.x;
+
+    const dy =
+      second.y - first.y;
+
+    return Math.sqrt(
+      dx * dx +
+        dy * dy
+    );
+  }
+
+  /* =======================================================
+     POINTER DOWN
   ======================================================= */
 
   function handlePointerDown(
     event:
       ReactPointerEvent<HTMLDivElement>
   ) {
-    if (event.button !== 0) {
+    if (
+      event.pointerType ===
+        "mouse" &&
+      event.button !== 0
+    ) {
       return;
     }
+
+    activePointers.current.set(
+      event.pointerId,
+      {
+        x: event.clientX,
+        y: event.clientY,
+      }
+    );
 
     const drag =
       dragState.current;
 
+    if (
+      activePointers.current
+        .size >= 2
+    ) {
+      pinchState.current.active =
+        true;
+
+      pinchState.current
+        .startDistance =
+        getPointerDistance();
+
+      pinchState.current
+        .startZoom =
+        zoomRef.current;
+
+      drag.dragging = false;
+      drag.moved = true;
+
+      drag.angularYaw = 0;
+      drag.angularPitch = 0;
+
+      setIsDragging(false);
+
+      return;
+    }
+
     drag.dragging = true;
     drag.moved = false;
+
+    drag.startX =
+      event.clientX;
+
+    drag.startY =
+      event.clientY;
 
     drag.lastX =
       event.clientX;
@@ -1281,20 +1609,66 @@ export default function GlobalTrendingGlobe({
     drag.angularPitch = 0;
 
     setIsDragging(true);
-
-    event.currentTarget.setPointerCapture(
-      event.pointerId
-    );
   }
 
   /* =======================================================
-     DRAG MOVE
+     POINTER MOVE
   ======================================================= */
 
   function handlePointerMove(
     event:
       ReactPointerEvent<HTMLDivElement>
   ) {
+    if (
+      activePointers.current.has(
+        event.pointerId
+      )
+    ) {
+      activePointers.current.set(
+        event.pointerId,
+        {
+          x: event.clientX,
+          y: event.clientY,
+        }
+      );
+    }
+
+    /* PINCH */
+
+    if (
+      pinchState.current
+        .active &&
+      activePointers.current
+        .size >= 2
+    ) {
+      const distance =
+        getPointerDistance();
+
+      const startDistance =
+        pinchState.current
+          .startDistance;
+
+      if (
+        distance > 0 &&
+        startDistance > 0
+      ) {
+        const ratio =
+          startDistance /
+          distance;
+
+        updateZoom(
+          pinchState.current
+            .startZoom *
+            ratio
+        );
+      }
+
+      dragState.current.moved =
+        true;
+
+      return;
+    }
+
     const drag =
       dragState.current;
 
@@ -1313,49 +1687,81 @@ export default function GlobalTrendingGlobe({
       event.clientY -
       drag.lastY;
 
+    const totalX =
+      event.clientX -
+      drag.startX;
+
+    const totalY =
+      event.clientY -
+      drag.startY;
+
+    const distance =
+      Math.sqrt(
+        totalX * totalX +
+          totalY * totalY
+      );
+
     const elapsed =
       Math.max(
         8,
-        now - drag.lastTime
+        now -
+          drag.lastTime
       ) / 1000;
 
     if (
-      Math.abs(deltaX) > 2 ||
-      Math.abs(deltaY) > 2
+      !drag.moved &&
+      distance > 6
     ) {
       drag.moved = true;
+
+      try {
+        if (
+          !event.currentTarget
+            .hasPointerCapture(
+              event.pointerId
+            )
+        ) {
+          event.currentTarget
+            .setPointerCapture(
+              event.pointerId
+            );
+        }
+      } catch {
+        // Safe fallback
+      }
     }
 
-    /*
-      Faster direct rotation
-    */
+    if (drag.moved) {
+      /*
+       * Slower and smoother dragging.
+       */
 
-    const yaw =
-      deltaX * 0.0095;
+      const yaw =
+        deltaX * 0.0055;
 
-    const pitch =
-      deltaY * 0.0068;
+      const pitch =
+        deltaY * 0.004;
 
-    drag.pendingYaw += yaw;
-    drag.pendingPitch += pitch;
+      drag.pendingYaw +=
+        yaw;
 
-    /*
-      Save velocity for flick
-    */
+      drag.pendingPitch +=
+        pitch;
 
-    drag.angularYaw =
-      clamp(
-        yaw / elapsed,
-        -4.5,
-        4.5
-      );
+      drag.angularYaw =
+        clamp(
+          yaw / elapsed,
+          -2.2,
+          2.2
+        );
 
-    drag.angularPitch =
-      clamp(
-        pitch / elapsed,
-        -3,
-        3
-      );
+      drag.angularPitch =
+        clamp(
+          pitch / elapsed,
+          -1.6,
+          1.6
+        );
+    }
 
     drag.lastX =
       event.clientX;
@@ -1367,50 +1773,173 @@ export default function GlobalTrendingGlobe({
   }
 
   /* =======================================================
-     RELEASE / FLICK
+     POINTER RELEASE
   ======================================================= */
 
-  function finishDrag(
+  function finishPointer(
     event:
       ReactPointerEvent<HTMLDivElement>
   ) {
     const drag =
       dragState.current;
 
+    activePointers.current.delete(
+      event.pointerId
+    );
+
+    /* PINCH FINISHED */
+
+    if (
+      pinchState.current
+        .active &&
+      activePointers.current
+        .size < 2
+    ) {
+      pinchState.current.active =
+        false;
+
+      drag.dragging = false;
+      drag.moved = true;
+
+      drag.angularYaw = 0;
+      drag.angularPitch = 0;
+
+      setIsDragging(false);
+
+      if (
+        activePointers.current
+          .size === 1
+      ) {
+        const remaining =
+          Array.from(
+            activePointers.current
+              .values()
+          )[0];
+
+        drag.startX =
+          remaining.x;
+
+        drag.startY =
+          remaining.y;
+
+        drag.lastX =
+          remaining.x;
+
+        drag.lastY =
+          remaining.y;
+
+        drag.lastTime =
+          performance.now();
+      }
+
+      window.setTimeout(
+        () => {
+          if (
+            activePointers.current
+              .size === 0
+          ) {
+            drag.moved =
+              false;
+          }
+        },
+        180
+      );
+
+      return;
+    }
+
     if (!drag.dragging) {
+      if (
+        activePointers.current
+          .size === 0
+      ) {
+        window.setTimeout(
+          () => {
+            drag.moved =
+              false;
+          },
+          120
+        );
+      }
+
       return;
     }
 
     drag.dragging = false;
 
-    drag.angularYaw *= 1.1;
-    drag.angularPitch *= 1.05;
+    /*
+     * Gentle release momentum.
+     */
+    if (drag.moved) {
+      drag.angularYaw *=
+        0.72;
+
+      drag.angularPitch *=
+        0.72;
+    }
 
     setIsDragging(false);
 
     try {
       if (
-        event.currentTarget.hasPointerCapture(
-          event.pointerId
-        )
+        event.currentTarget
+          .hasPointerCapture(
+            event.pointerId
+          )
       ) {
-        event.currentTarget.releasePointerCapture(
-          event.pointerId
-        );
+        event.currentTarget
+          .releasePointerCapture(
+            event.pointerId
+          );
       }
     } catch {
-      // safe fallback
+      // Safe fallback
     }
 
-    window.setTimeout(() => {
-      drag.moved = false;
-    }, 100);
+    window.setTimeout(
+      () => {
+        if (
+          activePointers.current
+            .size === 0
+        ) {
+          drag.moved =
+            false;
+        }
+      },
+      120
+    );
   }
+
+  /* =======================================================
+     ZOOM BUTTONS
+  ======================================================= */
+
+  function zoomIn() {
+    updateZoom(
+      zoomRef.current - 0.5
+    );
+  }
+
+  function zoomOut() {
+    updateZoom(
+      zoomRef.current + 0.5
+    );
+  }
+
+  function resetZoom() {
+    updateZoom(
+      DEFAULT_CAMERA_Z
+    );
+  }
+
+  /* =======================================================
+     JSX
+  ======================================================= */
 
   return (
     <div
       ref={containerRef}
-      className={`gt-real-globe gt-geographic-globe gt-futuristic-globe ${
+      className={`gt-real-globe gt-futuristic-globe ${
         isDragging
           ? "gt-globe-is-dragging"
           : ""
@@ -1422,28 +1951,39 @@ export default function GlobalTrendingGlobe({
         handlePointerMove
       }
       onPointerUp={
-        finishDrag
+        finishPointer
       }
       onPointerCancel={
-        finishDrag
+        finishPointer
       }
+      onDoubleClick={
+        resetZoom
+      }
+      style={{
+        touchAction: "none",
+      }}
     >
+
+      {/* BACKGROUND GLOW */}
+
       <div
         className="gt-real-globe-glow"
         aria-hidden="true"
       />
+
+      {/* THREE.JS */}
 
       {isVisible && (
         <Canvas
           camera={{
             position: [
               0,
-              0.05,
-              6.5,
+              0,
+              DEFAULT_CAMERA_Z,
             ],
             fov: 42,
           }}
-          dpr={[1, 1.2]}
+          dpr={[1, 1.25]}
           gl={{
             antialias: true,
             alpha: true,
@@ -1461,17 +2001,63 @@ export default function GlobalTrendingGlobe({
             dragState={
               dragState
             }
+            zoom={zoom}
           />
         </Canvas>
       )}
+
+      {/* ZOOM CONTROLS */}
+
+      <div
+        className="gt-globe-zoom-controls"
+        onPointerDown={(
+          event
+        ) => {
+          event.stopPropagation();
+        }}
+      >
+        <button
+          type="button"
+          onClick={zoomIn}
+          aria-label="Zoom globe in"
+          title="Zoom in"
+        >
+          +
+        </button>
+
+        <button
+          type="button"
+          onClick={
+            resetZoom
+          }
+          aria-label="Reset globe zoom"
+          title="Reset zoom"
+        >
+          ◎
+        </button>
+
+        <button
+          type="button"
+          onClick={
+            zoomOut
+          }
+          aria-label="Zoom globe out"
+          title="Zoom out"
+        >
+          −
+        </button>
+      </div>
+
+      {/* INSTRUCTION */}
 
       <div className="gt-globe-drag-hint">
         <span>↔</span>
 
         {isDragging
           ? "RELEASE TO FLICK"
-          : "DRAG • CLICK REGION"}
+          : "DRAG • TAP REGION • PINCH OR SCROLL TO ZOOM"}
       </div>
+
     </div>
   );
 }

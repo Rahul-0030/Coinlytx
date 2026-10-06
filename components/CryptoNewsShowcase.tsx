@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
+
 import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+
+import {
+  useMemo,
+  useRef,
+  useState,
+  type TouchEvent,
+} from "react";
 
 import type { WordPressPost } from "../lib/wordpress";
 
@@ -105,13 +112,19 @@ function preparePost(
 ): PreparedPost {
   return {
     id: post.id,
+
     slug: post.slug,
+
     title: stripHtml(
       post.title?.rendered || ""
     ),
+
     image: getImage(post),
+
     alt: getImageAlt(post),
+
     date: formatDate(post.date),
+
     excerpt: stripHtml(
       post.excerpt?.rendered || ""
     ),
@@ -136,9 +149,29 @@ export default function CryptoNewsShowcase({
   const [activeIndex, setActiveIndex] =
     useState(0);
 
+  /* =======================================================
+     MOBILE SWIPE REFS
+  ======================================================= */
+
+  const touchStartX =
+    useRef<number | null>(null);
+
+  const touchStartY =
+    useRef<number | null>(null);
+
+  const touchCurrentX =
+    useRef<number | null>(null);
+
+  const horizontalSwipe =
+    useRef(false);
+
   if (preparedPosts.length === 0) {
     return null;
   }
+
+  /* =======================================================
+     POST POSITIONS
+  ======================================================= */
 
   const getIndex = (offset: number) => {
     return (
@@ -161,6 +194,10 @@ export default function CryptoNewsShowcase({
   const fourthPost =
     preparedPosts[getIndex(2)];
 
+  /* =======================================================
+     PREVIOUS
+  ======================================================= */
+
   function previous() {
     setActiveIndex((current) =>
       current === 0
@@ -169,24 +206,153 @@ export default function CryptoNewsShowcase({
     );
   }
 
+  /* =======================================================
+     NEXT
+  ======================================================= */
+
   function next() {
-    setActiveIndex((current) =>
-      (current + 1) %
-      preparedPosts.length
+    setActiveIndex(
+      (current) =>
+        (current + 1) %
+        preparedPosts.length
     );
   }
+
+  /* =======================================================
+     MOBILE TOUCH SWIPE
+  ======================================================= */
+
+  function handleTouchStart(
+    event: TouchEvent<HTMLDivElement>
+  ) {
+    if (event.touches.length !== 1) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    touchStartX.current =
+      touch.clientX;
+
+    touchStartY.current =
+      touch.clientY;
+
+    touchCurrentX.current =
+      touch.clientX;
+
+    horizontalSwipe.current =
+      false;
+  }
+
+  function handleTouchMove(
+    event: TouchEvent<HTMLDivElement>
+  ) {
+    if (
+      touchStartX.current === null ||
+      touchStartY.current === null ||
+      event.touches.length !== 1
+    ) {
+      return;
+    }
+
+    const touch = event.touches[0];
+
+    touchCurrentX.current =
+      touch.clientX;
+
+    const deltaX =
+      touch.clientX -
+      touchStartX.current;
+
+    const deltaY =
+      touch.clientY -
+      touchStartY.current;
+
+    /*
+     * Only treat the movement as
+     * horizontal swipe when horizontal
+     * movement is stronger than vertical.
+     */
+    if (
+      Math.abs(deltaX) >
+        Math.abs(deltaY) &&
+      Math.abs(deltaX) > 8
+    ) {
+      horizontalSwipe.current =
+        true;
+    }
+  }
+
+  function handleTouchEnd() {
+    if (
+      touchStartX.current === null ||
+      touchCurrentX.current === null
+    ) {
+      resetTouch();
+      return;
+    }
+
+    const distance =
+      touchCurrentX.current -
+      touchStartX.current;
+
+    const SWIPE_THRESHOLD = 45;
+
+    if (
+      horizontalSwipe.current &&
+      Math.abs(distance) >=
+        SWIPE_THRESHOLD
+    ) {
+      /*
+       * Swipe LEFT
+       * Show next story
+       */
+      if (distance < 0) {
+        next();
+      }
+
+      /*
+       * Swipe RIGHT
+       * Show previous story
+       */
+      else {
+        previous();
+      }
+    }
+
+    resetTouch();
+  }
+
+  function handleTouchCancel() {
+    resetTouch();
+  }
+
+  function resetTouch() {
+    touchStartX.current = null;
+    touchStartY.current = null;
+    touchCurrentX.current = null;
+
+    horizontalSwipe.current =
+      false;
+  }
+
+  /* =========================================================
+     JSX
+  ========================================================= */
 
   return (
     <section className="cnx-section">
       <div className="cnx-shell">
 
-        {/* ================================================
+        {/* =================================================
             LEFT SIDE
         ================================================= */}
 
         <div className="cnx-intro">
+
           <div className="cnx-kicker">
             <span className="cnx-kicker-dot" />
+
             DIGITAL ASSET NEWSROOM
           </div>
 
@@ -214,7 +380,12 @@ export default function CryptoNewsShowcase({
             />
           </Link>
 
+          {/* ===============================================
+              DESKTOP / MANUAL CONTROLS
+          =============================================== */}
+
           <div className="cnx-controls">
+
             <button
               type="button"
               className="cnx-control"
@@ -225,6 +396,7 @@ export default function CryptoNewsShowcase({
             </button>
 
             <div className="cnx-counter">
+
               <strong>
                 {String(
                   activeIndex + 1
@@ -238,6 +410,7 @@ export default function CryptoNewsShowcase({
                   preparedPosts.length
                 ).padStart(2, "0")}
               </small>
+
             </div>
 
             <button
@@ -248,11 +421,18 @@ export default function CryptoNewsShowcase({
             >
               <ArrowRight size={19} />
             </button>
+
           </div>
 
+          {/* ===============================================
+              PROGRESS DOTS
+          =============================================== */}
+
           <div className="cnx-progress">
+
             {preparedPosts.map(
               (post, index) => (
+
                 <button
                   key={post.id}
                   type="button"
@@ -268,20 +448,43 @@ export default function CryptoNewsShowcase({
                     setActiveIndex(index)
                   }
                 />
+
               )
             )}
+
           </div>
+
         </div>
 
-        {/* ================================================
+        {/* =================================================
             RIGHT 3D STAGE
+            MOBILE FINGER SWIPE ENABLED
         ================================================= */}
 
-        <div className="cnx-stage">
+        <div
+          className="cnx-stage"
+          onTouchStart={
+            handleTouchStart
+          }
+          onTouchMove={
+            handleTouchMove
+          }
+          onTouchEnd={
+            handleTouchEnd
+          }
+          onTouchCancel={
+            handleTouchCancel
+          }
+        >
+
+          {/* BACKGROUND GLOW */}
+
           <div
             className="cnx-stage-glow"
             aria-hidden="true"
           />
+
+          {/* ORBITS */}
 
           <div
             className="cnx-orbit cnx-orbit-one"
@@ -293,24 +496,33 @@ export default function CryptoNewsShowcase({
             aria-hidden="true"
           />
 
-          {/* BACK LEFT STORY */}
+          {/* =================================================
+              BACK LEFT STORY
+          ================================================= */}
 
           <article className="cnx-story cnx-story-back-left">
+
             <Link
               href={`/${previousPost.slug}/`}
               className="cnx-image-link"
             >
+
               <div className="cnx-image-frame">
+
                 <img
                   src={previousPost.image}
                   alt={previousPost.alt}
+                  draggable={false}
                 />
 
                 <div className="cnx-image-shine" />
+
               </div>
+
             </Link>
 
             <div className="cnx-story-copy">
+
               <span className="cnx-story-date">
                 {previousPost.date}
               </span>
@@ -322,20 +534,28 @@ export default function CryptoNewsShowcase({
                   {previousPost.title}
                 </h3>
               </Link>
+
             </div>
+
           </article>
 
-          {/* MAIN ACTIVE STORY */}
+          {/* =================================================
+              MAIN ACTIVE STORY
+          ================================================= */}
 
           <article className="cnx-story cnx-story-main">
+
             <Link
               href={`/${activePost.slug}/`}
               className="cnx-image-link"
             >
+
               <div className="cnx-image-frame">
+
                 <img
                   src={activePost.image}
                   alt={activePost.alt}
+                  draggable={false}
                 />
 
                 <div className="cnx-image-shine" />
@@ -344,18 +564,25 @@ export default function CryptoNewsShowcase({
                   <i />
                   FEATURED
                 </span>
+
               </div>
+
             </Link>
 
             <div className="cnx-story-copy cnx-story-copy-main">
+
               <div className="cnx-story-meta">
-                <span>CRYPTO NEWS</span>
+
+                <span>
+                  CRYPTO NEWS
+                </span>
 
                 <span className="cnx-meta-line" />
 
                 <time>
                   {activePost.date}
                 </time>
+
               </div>
 
               <Link
@@ -367,9 +594,11 @@ export default function CryptoNewsShowcase({
               </Link>
 
               {activePost.excerpt && (
+
                 <p>
                   {activePost.excerpt}
                 </p>
+
               )}
 
               <Link
@@ -377,29 +606,42 @@ export default function CryptoNewsShowcase({
                 className="cnx-read-story"
               >
                 Read Story
+
                 <ArrowRight size={16} />
+
               </Link>
+
             </div>
+
           </article>
 
-          {/* RIGHT STORY */}
+          {/* =================================================
+              RIGHT STORY
+          ================================================= */}
 
           <article className="cnx-story cnx-story-right">
+
             <Link
               href={`/${nextPost.slug}/`}
               className="cnx-image-link"
             >
+
               <div className="cnx-image-frame">
+
                 <img
                   src={nextPost.image}
                   alt={nextPost.alt}
+                  draggable={false}
                 />
 
                 <div className="cnx-image-shine" />
+
               </div>
+
             </Link>
 
             <div className="cnx-story-copy">
+
               <span className="cnx-story-date">
                 {nextPost.date}
               </span>
@@ -411,24 +653,34 @@ export default function CryptoNewsShowcase({
                   {nextPost.title}
                 </h3>
               </Link>
+
             </div>
+
           </article>
 
-          {/* SMALL FLOATING STORY */}
+          {/* =================================================
+              SMALL FLOATING STORY
+          ================================================= */}
 
           {preparedPosts.length > 3 && (
+
             <article className="cnx-mini-story">
+
               <Link
                 href={`/${fourthPost.slug}/`}
                 className="cnx-mini-image"
               >
+
                 <img
                   src={fourthPost.image}
                   alt={fourthPost.alt}
+                  draggable={false}
                 />
+
               </Link>
 
               <div>
+
                 <span>
                   {fourthPost.date}
                 </span>
@@ -440,9 +692,16 @@ export default function CryptoNewsShowcase({
                     {fourthPost.title}
                   </h4>
                 </Link>
+
               </div>
+
             </article>
+
           )}
+
+          {/* =================================================
+              NEXT BUTTON
+          ================================================= */}
 
           <button
             type="button"
@@ -452,7 +711,9 @@ export default function CryptoNewsShowcase({
           >
             <ArrowRight size={22} />
           </button>
+
         </div>
+
       </div>
     </section>
   );

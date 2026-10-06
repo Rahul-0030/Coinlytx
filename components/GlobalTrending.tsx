@@ -1,19 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarDays,
-} from "lucide-react";
+import { ArrowRight, CalendarDays } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import GlobalTrendingGlobe, {
-  TrendingRegion,
+  type TrendingRegion,
 } from "./GlobalTrendingGlobe";
 
 import {
-  WordPressPost,
+  type WordPressPost,
   getFeaturedImage,
   getFeaturedImageAlt,
   stripHtml,
@@ -42,10 +38,6 @@ const REGION_LABELS: Record<TrendingRegion, string> = {
   "middle-east": "Middle East",
   africa: "Africa",
 };
-
-/* =========================================================
-   DETECT ARTICLE REGION
-========================================================= */
 
 function detectRegion(title: string): TrendingRegion {
   const text = ` ${title.toLowerCase()} `;
@@ -124,10 +116,6 @@ function detectRegion(title: string): TrendingRegion {
   return "global";
 }
 
-/* =========================================================
-   PREPARE WORDPRESS POST
-========================================================= */
-
 function preparePost(post: WordPressPost): TrendingItem {
   const title = stripHtml(post.title.rendered);
 
@@ -142,10 +130,6 @@ function preparePost(post: WordPressPost): TrendingItem {
   };
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
-
 export default function GlobalTrending({
   posts,
 }: GlobalTrendingProps) {
@@ -157,15 +141,9 @@ export default function GlobalTrending({
   const [activeRegion, setActiveRegion] =
     useState<TrendingRegion>("global");
 
-  const [activeIndex, setActiveIndex] = useState(0);
-
   if (!stories.length) {
     return null;
   }
-
-  /* =======================================================
-     REGION FILTER
-  ======================================================= */
 
   const regionStories =
     activeRegion === "global"
@@ -175,237 +153,152 @@ export default function GlobalTrending({
         );
 
   /*
-    If a region currently has no detected stories,
-    keep the panel populated with Global Trending stories.
-  */
-  const displayStories =
+   * If there aren't enough region-specific stories,
+   * fill the remaining positions with other recent stories.
+   */
+  const primaryStories =
     regionStories.length > 0 ? regionStories : stories;
 
-  const visibleStories = Array.from(
-    {
-      length: Math.min(5, displayStories.length),
-    },
-    (_, offset) =>
-      displayStories[
-        (activeIndex + offset) % displayStories.length
-      ]
+  const storyIds = new Set(primaryStories.map((story) => story.id));
+
+  const fallbackStories = stories.filter(
+    (story) => !storyIds.has(story.id)
   );
 
-  /* =======================================================
-     GLOBE REGION CLICK
-  ======================================================= */
+  const visibleStories = [
+    ...primaryStories,
+    ...fallbackStories,
+  ].slice(0, 5);
 
   function selectRegion(region: TrendingRegion) {
     setActiveRegion(region);
-    setActiveIndex(0);
-  }
-
-  function nextStory() {
-    setActiveIndex(
-      (current) =>
-        (current + 1) % displayStories.length
-    );
-  }
-
-  function previousStory() {
-    setActiveIndex((current) =>
-      current === 0
-        ? displayStories.length - 1
-        : current - 1
-    );
   }
 
   return (
     <section
-      className="gt3d-section"
-      aria-label="Global Trending"
+      className="gt-section"
+      aria-labelledby="global-trending-title"
     >
-      {/* ===================================================
-          HEADER
-      ==================================================== */}
+      {/* HEADER */}
 
-      <div className="gt3d-header">
-        <div className="gt3d-title-wrap">
-          <span
-            className="gt3d-title-line"
-            aria-hidden="true"
-          />
-
-          <h2>
-            Global <span>Trending</span>
-          </h2>
-        </div>
+      <div className="gt-header">
+        <h2 id="global-trending-title">
+          Global <span>Trending</span>
+        </h2>
 
         <Link
           href="/global-trending/"
-          className="gt3d-view-all"
+          className="gt-view-all"
         >
           View All
-          <ArrowRight size={17} />
+          <ArrowRight size={16} aria-hidden="true" />
         </Link>
       </div>
 
-      {/* ===================================================
-          MAIN SECTION
-      ==================================================== */}
+      {/* CONTENT */}
 
-      <div className="gt3d-layout">
-        {/* =================================================
-            INTERACTIVE GLOBE
+      <div className="gt-panel">
+        {/* GLOBE */}
 
-            NO Global / America / Europe buttons here.
-            Selection happens directly from the globe.
-        ================================================== */}
-
-        <div className="gt3d-world">
+        <div className="gt-globe-column">
           <GlobalTrendingGlobe
             activeRegion={activeRegion}
             onRegionChange={selectRegion}
           />
 
-          {/* Selected region indicator */}
-
-          <div className="gt-active-region">
-            <span className="gt-active-region-dot" />
+          <div className="gt-region-status">
+            <span className="gt-region-status-dot" />
 
             <div>
-              <small>TRENDING REGION</small>
+              <span>Trending Region</span>
 
               <strong>
                 {REGION_LABELS[activeRegion]}
               </strong>
             </div>
           </div>
-
-          {/* Previous */}
-
-          <button
-            type="button"
-            className="gt3d-world-control gt3d-world-prev"
-            onClick={previousStory}
-            aria-label="Previous trending story"
-          >
-            <ArrowLeft size={21} />
-          </button>
-
-          {/* Next */}
-
-          <button
-            type="button"
-            className="gt3d-world-control gt3d-world-next"
-            onClick={nextStory}
-            aria-label="Next trending story"
-          >
-            <ArrowRight size={21} />
-          </button>
         </div>
 
-        {/* =================================================
-            RIGHT NEWS PANEL
-        ================================================== */}
+        {/* STORIES */}
 
-        <div className="gt3d-ranking">
-          <div className="gt-ranking-heading">
-            <div>
-              <span>LIVE TRENDING</span>
+        <div className="gt-stories">
+          <div className="gt-stories-heading">
+            <h3>
+              {REGION_LABELS[activeRegion]} Stories
+            </h3>
 
-              <strong>
-                {REGION_LABELS[activeRegion]}
-              </strong>
-            </div>
-
-            <span className="gt-live-indicator">
-              <i />
-              LIVE
-            </span>
+            <span className="gt-stories-line" />
           </div>
 
-          {visibleStories.map((story, index) => (
-            <article
-              className="gt3d-ranking-card"
-              key={`${story.id}-${index}`}
-            >
-              {/* Ranking number */}
-
-              <span className="gt3d-rank">
-                {index + 1}
-              </span>
-
-              {/* Featured image */}
-
-              <Link
-                href={story.href}
-                className="gt3d-rank-image"
-                aria-label={story.title}
+          <div className="gt-story-list">
+            {visibleStories.map((story, index) => (
+              <article
+                key={story.id}
+                className="gt-story-card"
               >
-                {story.image ? (
-                  <img
-                    src={story.image}
-                    alt={story.imageAlt}
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="gt3d-image-placeholder">
-                    CoinlytX
+                <span className="gt-story-number">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+
+                <Link
+                  href={story.href}
+                  className="gt-story-image"
+                  aria-label={story.title}
+                >
+                  {story.image ? (
+                    <img
+                      src={story.image}
+                      alt={story.imageAlt}
+                      loading={index < 2 ? "eager" : "lazy"}
+                    />
+                  ) : (
+                    <span className="gt-story-image-fallback">
+                      CX
+                    </span>
+                  )}
+                </Link>
+
+                <div className="gt-story-content">
+                  <div className="gt-story-meta">
+                    <span>
+                      {REGION_LABELS[story.region]}
+                    </span>
+
+                    <span className="gt-story-meta-separator">
+                      •
+                    </span>
+
+                    <span>
+                      <CalendarDays
+                        size={11}
+                        aria-hidden="true"
+                      />
+
+                      {story.date}
+                    </span>
                   </div>
-                )}
-              </Link>
 
-              {/* Story information */}
+                  <h4>
+                    <Link href={story.href}>
+                      {story.title}
+                    </Link>
+                  </h4>
 
-              <div className="gt3d-rank-content">
-                <div className="gt3d-rank-meta">
-                  <span className="gt3d-rank-badge">
-                    {story.region === "global"
-                      ? "Trending"
-                      : REGION_LABELS[story.region]}
-                  </span>
-
-                  <span className="gt3d-rank-date">
-                    <CalendarDays size={12} />
-                    {story.date}
-                  </span>
-                </div>
-
-                <h3>
-                  <Link href={story.href}>
-                    {story.title}
+                  <Link
+                    href={story.href}
+                    className="gt-story-read"
+                  >
+                    Read Story
+                    <ArrowRight
+                      size={12}
+                      aria-hidden="true"
+                    />
                   </Link>
-                </h3>
-              </div>
-
-              <Link
-                href={story.href}
-                className="gt3d-story-arrow"
-                aria-label={`Read ${story.title}`}
-              >
-                <ArrowRight size={18} />
-              </Link>
-            </article>
-          ))}
+                </div>
+              </article>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* ===================================================
-          STORY POSITION DOTS
-      ==================================================== */}
-
-      <div className="gt3d-dots">
-        {displayStories
-          .slice(0, 8)
-          .map((story, index) => (
-            <button
-              type="button"
-              key={`dot-${story.id}`}
-              onClick={() => setActiveIndex(index)}
-              aria-label={`Show story ${index + 1}`}
-              className={
-                index === activeIndex
-                  ? "gt3d-dot gt3d-dot-active"
-                  : "gt3d-dot"
-              }
-            />
-          ))}
       </div>
     </section>
   );
