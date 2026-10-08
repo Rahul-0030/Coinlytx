@@ -7,11 +7,12 @@ import "./globals.css";
 
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import StickyVideoBanner from "../components/StickyVideoBanner";
+import HeaderVideoBanner from "../components/HeaderVideoBanner";
 
 export const metadata: Metadata = {
   title: {
-    default:
-      "CoinlytX | Crypto News, Markets & Web3",
+    default: "CoinlytX | Crypto News, Markets & Web3",
     template: "%s | CoinlytX",
   },
 
@@ -32,13 +33,22 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/* TOP ADVERTISEMENT */}
+        <HeaderVideoBanner />
+
+        {/* LOGO + NAVIGATION */}
         <Header />
 
+        {/* PAGE CONTENT */}
         <main>
           {children}
         </main>
 
+        {/* WEBSITE FOOTER */}
         <Footer />
+
+        {/* STICKY BOTTOM ADVERTISEMENT */}
+        <StickyVideoBanner />
       </body>
     </html>
   );
