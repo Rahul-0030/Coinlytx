@@ -215,8 +215,37 @@ export async function getPostsByCategory(
   );
 }
 
+
+/* =========================================================
+   GET RELATED POSTS
+   Used on individual article pages for internal linking
+========================================================= */
+
+export async function getRelatedPosts(
+  categoryId: number,
+  currentPostId: number,
+  amount: number = 4
+): Promise<WordPressPost[]> {
+  try {
+    const posts = await wordpressFetch<WordPressPost[]>(
+      `/posts?categories=${categoryId}&exclude=${currentPostId}&per_page=${amount}&_embed`
+    );
+
+    return posts;
+  } catch (error) {
+    console.error(
+      "Unable to load related CoinlytX articles:",
+      error
+    );
+
+    return [];
+  }
+}
+
+
 /* =========================================================
    GET POSTS FROM CATEGORY SLUG
+
    IMPORTANT:
    We first find the WordPress category ID automatically.
    You do NOT need to hard-code category IDs.

@@ -10,6 +10,28 @@ export default function StickyVideoBanner() {
 
   return (
     <div className="sticky-video-banner">
+      <a
+        href="https://creatives.excelaffiliates.com/redirect?mid=6090&sid=1019759&affid=1014749"
+        target="_blank"
+        rel="sponsored nofollow noopener noreferrer"
+        aria-label="Visit Betrino"
+        className="sticky-video-link"
+      >
+        <video
+          className="sticky-video-media"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        >
+          <source
+            src="/banners/header-banner.mp4"
+            type="video/mp4"
+          />
+        </video>
+      </a>
+
       <button
         type="button"
         className="sticky-video-close"
@@ -18,20 +40,6 @@ export default function StickyVideoBanner() {
       >
         <X size={16} />
       </button>
-
-      <video
-        className="sticky-video-media"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="metadata"
-      >
-        <source
-          src="/banners/header-banner.mp4"
-          type="video/mp4"
-        />
-      </video>
     </div>
   );
 }

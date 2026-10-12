@@ -28651,3 +28651,383 @@ body {
     padding-bottom: 90px;
   }
 }
+/* =========================================================
+   ARTICLE — RELATED ARTICLES
+========================================================= */
+
+.cfx-related-articles {
+  width: 100%;
+  margin-top: 48px;
+  padding-top: 32px;
+
+  border-top: 1px solid var(--border);
+}
+
+.cfx-related-heading {
+  margin-bottom: 22px;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 20px;
+}
+
+.cfx-related-kicker {
+  display: block;
+
+  margin-bottom: 6px;
+
+  color: var(--blue);
+
+  font-size: 10px;
+  font-weight: 900;
+
+  letter-spacing: 1.8px;
+}
+
+.cfx-related-heading h2 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+
+  font-size: 28px;
+  line-height: 1.15;
+
+  letter-spacing: -0.5px;
+}
+
+.cfx-related-heading > a {
+  color: var(--blue);
+
+  font-size: 12px;
+  font-weight: 800;
+
+  white-space: nowrap;
+
+  transition:
+    transform 0.2s ease,
+    color 0.2s ease;
+}
+
+.cfx-related-heading > a:hover {
+  transform: translateX(3px);
+}
+
+
+/* =========================================================
+   RELATED ARTICLES GRID
+========================================================= */
+
+.cfx-related-grid {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 18px;
+}
+
+
+/* =========================================================
+   RELATED ARTICLE CARD
+========================================================= */
+
+.cfx-related-card {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  border: 1px solid var(--border);
+  border-radius: 18px;
+
+  background: var(--surface-solid);
+
+  box-shadow:
+    0 10px 28px
+    rgba(10, 55, 105, 0.07);
+
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.cfx-related-card:hover {
+  transform:
+    perspective(900px)
+    translateY(-5px)
+    translateZ(8px);
+
+  border-color:
+    rgba(8, 117, 235, 0.25);
+
+  box-shadow:
+    0 18px 38px
+    rgba(10, 70, 140, 0.12);
+}
+
+
+/* =========================================================
+   RELATED ARTICLE IMAGE
+========================================================= */
+
+.cfx-related-image {
+  position: relative;
+
+  width: 100%;
+  height: 180px;
+
+  overflow: hidden;
+
+  background: var(--background-soft);
+}
+
+.cfx-related-image img {
+  width: 100%;
+  height: 100%;
+
+  display: block;
+
+  object-fit: cover;
+  object-position: center;
+
+  transition:
+    transform 0.5s ease;
+}
+
+.cfx-related-card:hover
+.cfx-related-image img {
+  transform: scale(1.05);
+}
+
+
+/* =========================================================
+   RELATED ARTICLE CONTENT
+========================================================= */
+
+.cfx-related-copy {
+  min-height: 128px;
+
+  padding: 17px 18px 18px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.cfx-related-copy h3 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family:
+    Georgia,
+    "Times New Roman",
+    serif;
+
+  font-size: 17px;
+  font-weight: 700;
+
+  line-height: 1.35;
+
+  letter-spacing: -0.2px;
+
+  display: -webkit-box;
+
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+
+  overflow: hidden;
+
+  transition:
+    color 0.2s ease;
+}
+
+.cfx-related-card:hover
+.cfx-related-copy h3 {
+  color: var(--blue);
+}
+
+.cfx-related-copy time {
+  margin-top: auto;
+  padding-top: 14px;
+
+  color: var(--text-secondary);
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   RELATED ARTICLES — DARK MODE
+========================================================= */
+
+html.dark
+.cfx-related-card {
+  box-shadow:
+    0 12px 30px
+    rgba(0, 0, 0, 0.22);
+}
+
+html.dark
+.cfx-related-card:hover {
+  border-color:
+    rgba(0, 183, 255, 0.28);
+
+  box-shadow:
+    0 18px 42px
+    rgba(0, 0, 0, 0.34);
+}
+
+
+/* =========================================================
+   RELATED ARTICLES — TABLET
+========================================================= */
+
+@media (max-width: 900px) {
+
+  .cfx-related-articles {
+    margin-top: 38px;
+    padding-top: 27px;
+  }
+
+  .cfx-related-image {
+    height: 165px;
+  }
+
+}
+
+
+/* =========================================================
+   RELATED ARTICLES — MOBILE
+========================================================= */
+
+@media (max-width: 600px) {
+
+  .cfx-related-articles {
+    margin-top: 32px;
+    padding-top: 24px;
+  }
+
+  .cfx-related-heading {
+    margin-bottom: 17px;
+
+    align-items: center;
+  }
+
+  .cfx-related-heading h2 {
+    font-size: 23px;
+  }
+
+  .cfx-related-heading > a {
+    font-size: 10px;
+  }
+
+  .cfx-related-grid {
+    grid-template-columns: 1fr;
+
+    gap: 14px;
+  }
+
+  .cfx-related-card {
+    border-radius: 16px;
+  }
+
+  .cfx-related-image {
+    height: 205px;
+  }
+
+  .cfx-related-copy {
+    min-height: auto;
+
+    padding: 15px 16px 16px;
+  }
+
+  .cfx-related-copy h3 {
+    font-size: 17px;
+
+    -webkit-line-clamp: 2;
+  }
+
+  .cfx-related-copy time {
+    margin-top: 11px;
+    padding-top: 0;
+  }
+
+}
+/* =========================================================
+   RELATED ARTICLES — 4 CARDS IN ONE ROW
+========================================================= */
+
+@media (min-width: 901px) {
+
+  .cfx-related-grid {
+    grid-template-columns:
+      repeat(4, minmax(0, 1fr));
+
+    gap: 14px;
+  }
+
+  .cfx-related-image {
+    height: 120px;
+  }
+
+  .cfx-related-copy {
+    min-height: 115px;
+
+    padding: 13px 14px 14px;
+  }
+
+  .cfx-related-copy h3 {
+    font-size: 14px;
+    line-height: 1.35;
+
+    -webkit-line-clamp: 3;
+  }
+
+  .cfx-related-copy time {
+    padding-top: 10px;
+
+    font-size: 10px;
+  }
+
+  .cfx-related-card {
+    border-radius: 14px;
+  }
+
+}
+/* Prevent white space below the site footer */
+html {
+  min-height: 100%;
+  background: #020817;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+}
+.top-video-banner-link,
+.sticky-video-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.top-video-banner-link video,
+.sticky-video-link video {
+  display: block;
+  width: 100%;
+}
