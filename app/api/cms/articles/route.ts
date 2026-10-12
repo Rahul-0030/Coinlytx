@@ -4,12 +4,6 @@ import { createClient } from "@/lib/supabase-server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteContext = {
-  params: Promise<{
-    id: string;
-  }>;
-};
-
 async function getAuthenticatedSupabase() {
   const supabase = await createClient();
 
@@ -19,104 +13,96 @@ async function getAuthenticatedSupabase() {
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    return {
-      supabase,
-      user: null,
-    };
+    return { supabase, user: null };
   }
 
-  return {
-    supabase,
-    user,
-  };
+  return { supabase, user };
 }
 
-/* =========================================================
-   GET SINGLE ARTICLE
-========================================================= */
+function cleanSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
-export async function GET(
-  _request: NextRequest,
-  context: RouteContext
-) {
+function getWordCount(html: string) {
+  const cleanContent = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleanContent
+    ? cleanContent.split(/\s+/).filter(Boolean).length
+    : 0;
+}
+
+export async function GET(_request: NextRequest) {
   try {
-    const { id } = await context.params;
-
-    const {
-      supabase,
-      user,
-    } = await getAuthenticatedSupabase();
+    const { supabase, user } =
+      await getAuthenticatedSupabase();
 
     if (!user) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized.",
-        },
+        { success: false, error: "Unauthorized." },
         { status: 401 }
       );
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("articles")
       .select(`
         id,
         title,
         slug,
         excerpt,
-        content,
         status,
-
         seo_title,
         meta_description,
         focus_keyword,
         canonical_url,
-
         category_id,
-
         featured_image_url,
         featured_image_alt,
-
         robots_index,
         robots_follow,
-
         word_count,
         published_at,
         created_at,
         updated_at
       `)
-      .eq("id", id)
-      .single();
+      .order("updated_at", { ascending: false });
 
-    if (error || !data) {
+    if (error) {
+      console.error("GET ARTICLES ERROR:", error);
+
       return NextResponse.json(
         {
           success: false,
-          error: "Article not found.",
-          details: error?.message,
+          error: "Unable to load articles.",
+          details: error.message,
         },
-        { status: 404 }
+        { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      article: data,
+      articles: data ?? [],
+      count: data?.length ?? 0,
     });
   } catch (error) {
-    console.error(
-      "GET ARTICLE ERROR:",
-      error
-    );
+    console.error("GET ARTICLES ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Unable to load article.",
+        error: "Unable to load articles.",
         details:
           error instanceof Error
             ? error.message
@@ -127,94 +113,51 @@ export async function GET(
   }
 }
 
-/* =========================================================
-   UPDATE / PUBLISH ARTICLE
-========================================================= */
-
-export async function PATCH(
-  request: NextRequest,
-  context: RouteContext
-) {
+export async function POST(request: NextRequest) {
   try {
-    const { id } =
-      await context.params;
-
-    const {
-      supabase,
-      user,
-    } = await getAuthenticatedSupabase();
+    const { supabase, user } =
+      await getAuthenticatedSupabase();
 
     if (!user) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Unauthorized.",
-        },
+        { success: false, error: "Unauthorized." },
         { status: 401 }
       );
     }
 
-    const body =
-      await request.json();
+    const body = await request.json();
 
-    const action = String(
-      body.action ?? "save"
-    ).trim();
-
-    const title = String(
-      body.title ?? ""
-    ).trim();
-
-    const slug = String(
-      body.slug ?? ""
-    ).trim();
-
-    const excerpt = String(
-      body.excerpt ?? ""
-    ).trim();
-
-    const content = String(
-      body.content ?? ""
-    ).trim();
-
-    const seoTitle = String(
-      body.seoTitle ?? ""
-    ).trim();
-
+    const action = String(body.action ?? "save").trim();
+    const title = String(body.title ?? "").trim();
+    const rawSlug = String(body.slug ?? "").trim();
+    const slug = cleanSlug(rawSlug);
+    const excerpt = String(body.excerpt ?? "").trim();
+    const content = String(body.content ?? "").trim();
+    const seoTitle = String(body.seoTitle ?? "").trim();
     const metaDescription = String(
       body.metaDescription ?? ""
     ).trim();
-
     const focusKeyword = String(
       body.focusKeyword ?? ""
     ).trim();
-
     const canonicalUrl = String(
       body.canonicalUrl ?? ""
     ).trim();
-
     const categoryId = String(
       body.categoryId ?? ""
     ).trim();
-
     const featuredImageUrl = String(
       body.featuredImageUrl ?? ""
     ).trim();
-
     const featuredImageAlt = String(
       body.featuredImageAlt ?? ""
     ).trim();
-
-    /* =====================================================
-       VALIDATION
-    ===================================================== */
 
     if (!title) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Article title is required.",
+          error: "Article title is required.",
         },
         { status: 400 }
       );
@@ -224,29 +167,13 @@ export async function PATCH(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Article slug is required.",
+          error: "Article slug is required.",
         },
         { status: 400 }
       );
     }
 
-    if (!content) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Article content is required.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(
-        slug
-      )
-    ) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
       return NextResponse.json(
         {
           success: false,
@@ -257,191 +184,72 @@ export async function PATCH(
       );
     }
 
-    if (
-      action !== "save" &&
-      action !== "publish"
-    ) {
+    if (!content) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Invalid article action.",
+          error: "Article content is required.",
         },
         { status: 400 }
       );
     }
 
-    /* =====================================================
-       WORD COUNT
-    ===================================================== */
-
-    const cleanContent = content
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const wordCount = cleanContent
-      ? cleanContent
-          .split(" ")
-          .filter(Boolean).length
-      : 0;
-
-    const finalCanonical =
-      canonicalUrl ||
-      `https://coinlytx.com/${slug}`;
-
-    /* =====================================================
-       CURRENT ARTICLE
-    ===================================================== */
-
-    const {
-      data: existingArticle,
-      error: existingError,
-    } = await supabase
-      .from("articles")
-      .select(`
-        id,
-        status,
-        published_at
-      `)
-      .eq("id", id)
-      .single();
-
-    if (
-      existingError ||
-      !existingArticle
-    ) {
+    if (action !== "save" && action !== "publish") {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Article not found.",
-          details:
-            existingError?.message,
+          error: "Invalid article action.",
         },
-        { status: 404 }
+        { status: 400 }
       );
     }
 
-    /* =====================================================
-       UPDATE DATA
-    ===================================================== */
+    const now = new Date().toISOString();
+    const wordCount = getWordCount(content);
+    const finalCanonical =
+      canonicalUrl || `https://coinlytx.com/${slug}`;
+    const isPublishing = action === "publish";
 
-    const updateData: {
-      title: string;
-      slug: string;
-      excerpt: string | null;
-      content: string;
-
-      seo_title: string | null;
-      meta_description: string | null;
-      focus_keyword: string | null;
-      canonical_url: string;
-
-      category_id: string | null;
-
-      featured_image_url:
-        | string
-        | null;
-
-      featured_image_alt:
-        | string
-        | null;
-
-      word_count: number;
-      updated_at: string;
-
-      status?: string;
-      published_at?:
-        | string
-        | null;
-
-      robots_index?: boolean;
-      robots_follow?: boolean;
-    } = {
+    const insertData = {
       title,
       slug,
-
-      excerpt:
-        excerpt || null,
-
+      excerpt: excerpt || null,
       content,
-
-      seo_title:
-        seoTitle || null,
-
-      meta_description:
-        metaDescription || null,
-
-      focus_keyword:
-        focusKeyword || null,
-
-      canonical_url:
-        finalCanonical,
-
-      category_id:
-        categoryId || null,
-
-      featured_image_url:
-        featuredImageUrl || null,
-
-      featured_image_alt:
-        featuredImageAlt || null,
-
-      word_count:
-        wordCount,
-
-      updated_at:
-        new Date().toISOString(),
+      status: isPublishing ? "published" : "draft",
+      seo_title: seoTitle || null,
+      meta_description: metaDescription || null,
+      focus_keyword: focusKeyword || null,
+      canonical_url: finalCanonical,
+      category_id: categoryId || null,
+      featured_image_url: featuredImageUrl || null,
+      featured_image_alt: featuredImageAlt || null,
+      word_count: wordCount,
+      robots_index: isPublishing,
+      robots_follow: isPublishing,
+      published_at: isPublishing ? now : null,
+      updated_at: now,
     };
 
-    /* =====================================================
-       PUBLISH
-    ===================================================== */
-
-    if (action === "publish") {
-      updateData.status =
-        "published";
-
-      updateData.published_at =
-        existingArticle.published_at ||
-        new Date().toISOString();
-
-      updateData.robots_index =
-        true;
-
-      updateData.robots_follow =
-        true;
-    }
-
-    /* =====================================================
-       UPDATE DATABASE
-    ===================================================== */
-
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("articles")
-      .update(updateData)
-      .eq("id", id)
+      .insert(insertData)
       .select(`
         id,
         title,
         slug,
+        excerpt,
+        content,
         status,
-
+        seo_title,
+        meta_description,
+        focus_keyword,
+        canonical_url,
         category_id,
-
         featured_image_url,
         featured_image_alt,
-
-        word_count,
-        canonical_url,
-
         robots_index,
         robots_follow,
-
+        word_count,
         published_at,
         created_at,
         updated_at
@@ -449,14 +257,9 @@ export async function PATCH(
       .single();
 
     if (error) {
-      console.error(
-        "UPDATE ARTICLE ERROR:",
-        error
-      );
+      console.error("CREATE ARTICLE ERROR:", error);
 
-      if (
-        error.code === "23505"
-      ) {
+      if (error.code === "23505") {
         return NextResponse.json(
           {
             success: false,
@@ -470,44 +273,31 @@ export async function PATCH(
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Unable to update article.",
-          details:
-            error.message,
-          code:
-            error.code,
+          error: "Unable to create article.",
+          details: error.message,
+          code: error.code,
         },
         { status: 500 }
       );
     }
 
-    /* =====================================================
-       SUCCESS
-    ===================================================== */
-
-    return NextResponse.json({
-      success: true,
-
-      message:
-        action === "publish"
+    return NextResponse.json(
+      {
+        success: true,
+        message: isPublishing
           ? "Article published successfully."
-          : "Article updated successfully.",
-
-      article:
-        data,
-    });
-  } catch (error) {
-    console.error(
-      "ARTICLE PATCH ERROR:",
-      error
+          : "Draft created successfully.",
+        article: data,
+      },
+      { status: 201 }
     );
+  } catch (error) {
+    console.error("ARTICLE CREATE ERROR:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error:
-          "Article update failed.",
-
+        error: "Article creation failed.",
         details:
           error instanceof Error
             ? error.message
