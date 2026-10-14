@@ -1,24 +1,173 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+
+function getSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const key =
+    process.env
+      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      "Supabase configuration is missing."
+    );
+  }
+
+  return createBrowserClient(url, key);
+}
 
 export default function ResetPasswordPage() {
   const router = useRouter();
 
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] =
+  const [password, setPassword] =
     useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] = useState("");
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+  const [loading, setLoading] =
+    useState(false);
+
+  const [checking, setChecking] =
+    useState(true);
+
+  const [recoveryReady, setRecoveryReady] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function prepareRecoverySession() {
+      try {
+        setChecking(true);
+        setError("");
+
+        const supabase =
+          getSupabase();
+
+        const currentUrl =
+          new URL(window.location.href);
+
+        const code =
+          currentUrl.searchParams.get(
+            "code"
+          );
+
+        const hashParams =
+          new URLSearchParams(
+            window.location.hash.replace(
+              /^#/,
+              ""
+            )
+          );
+
+        const accessToken =
+          hashParams.get(
+            "access_token"
+          );
+
+        const refreshToken =
+          hashParams.get(
+            "refresh_token"
+          );
+
+        if (
+          accessToken &&
+          refreshToken
+        ) {
+          const {
+            error: sessionError,
+          } =
+            await supabase.auth.setSession(
+              {
+                access_token:
+                  accessToken,
+                refresh_token:
+                  refreshToken,
+              }
+            );
+
+          if (sessionError) {
+            throw sessionError;
+          }
+        } else if (code) {
+          const {
+            error: exchangeError,
+          } =
+            await supabase.auth.exchangeCodeForSession(
+              code
+            );
+
+          if (exchangeError) {
+            throw exchangeError;
+          }
+        }
+
+        const {
+          data: { session },
+          error: sessionCheckError,
+        } =
+          await supabase.auth.getSession();
+
+        if (sessionCheckError) {
+          throw sessionCheckError;
+        }
+
+        if (!session) {
+          throw new Error(
+            "This password recovery link is invalid or has expired. Please request a new reset link."
+          );
+        }
+
+        window.history.replaceState(
+          {},
+          document.title,
+          "/admin/reset-password"
+        );
+
+        if (mounted) {
+          setRecoveryReady(true);
+        }
+      } catch (err) {
+        if (mounted) {
+          setRecoveryReady(false);
+
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to verify the password recovery link."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setChecking(false);
+        }
+      }
+    }
+
+    prepareRecoverySession();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
@@ -30,36 +179,62 @@ export default function ResetPasswordPage() {
       setError("");
       setSuccess("");
 
+      if (!recoveryReady) {
+        throw new Error(
+          "Password recovery session is not available. Request a new reset link."
+        );
+      }
+
       if (password.length < 8) {
         throw new Error(
           "Password must contain at least 8 characters."
         );
       }
 
-      if (password !== confirmPassword) {
+      if (
+        password !== confirmPassword
+      ) {
         throw new Error(
           "Passwords do not match."
         );
       }
 
-      const { error: updateError } =
-        await supabase.auth.updateUser({
-          password,
-        });
+      const supabase =
+        getSupabase();
+
+      const {
+        data,
+        error: updateError,
+      } =
+        await supabase.auth.updateUser(
+          {
+            password,
+          }
+        );
 
       if (updateError) {
         throw updateError;
       }
 
+      if (!data.user) {
+        throw new Error(
+          "Unable to update password."
+        );
+      }
+
       setSuccess(
-        "Password updated successfully."
+        "Password updated successfully. Redirecting to login..."
       );
 
       await supabase.auth.signOut();
 
       setTimeout(() => {
-        router.replace("/admin/login");
-      }, 1500);
+        router.replace(
+          "/admin/login?reset=success"
+        );
+
+        router.refresh();
+      }, 1200);
     } catch (err) {
       setError(
         err instanceof Error
@@ -69,6 +244,10 @@ export default function ResetPasswordPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function goToLogin() {
+    router.replace("/admin/login");
   }
 
   return (
@@ -87,67 +266,116 @@ export default function ResetPasswordPage() {
           Coinlytx admin account.
         </p>
 
-        <form onSubmit={handleSubmit}>
-          <label style={labelStyle}>
-            New Password
-          </label>
+        {checking && (
+          <div style={infoStyle}>
+            Verifying password recovery
+            link...
+          </div>
+        )}
 
-          <input
-            type="password"
-            value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            placeholder="New password"
-            autoComplete="new-password"
-            style={inputStyle}
-          />
+        {!checking &&
+          recoveryReady && (
+            <form
+              onSubmit={handleSubmit}
+            >
+              <label
+                style={labelStyle}
+              >
+                New Password
+              </label>
 
-          <label style={labelStyle}>
-            Confirm Password
-          </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) =>
+                  setPassword(
+                    event.target.value
+                  )
+                }
+                placeholder="New password"
+                autoComplete="new-password"
+                style={inputStyle}
+                required
+              />
 
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) =>
-              setConfirmPassword(
-                e.target.value
-              )
-            }
-            placeholder="Confirm new password"
-            autoComplete="new-password"
-            style={inputStyle}
-          />
+              <label
+                style={labelStyle}
+              >
+                Confirm Password
+              </label>
 
-          {error && (
-            <div style={errorStyle}>
-              {error}
-            </div>
+              <input
+                type="password"
+                value={
+                  confirmPassword
+                }
+                onChange={(event) =>
+                  setConfirmPassword(
+                    event.target.value
+                  )
+                }
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+                style={inputStyle}
+                required
+              />
+
+              {error && (
+                <div
+                  style={errorStyle}
+                >
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div
+                  style={successStyle}
+                >
+                  {success}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  ...buttonStyle,
+                  opacity: loading
+                    ? 0.65
+                    : 1,
+                  cursor: loading
+                    ? "not-allowed"
+                    : "pointer",
+                }}
+              >
+                {loading
+                  ? "Updating..."
+                  : "Update Password"}
+              </button>
+            </form>
           )}
 
-          {success && (
-            <div style={successStyle}>
-              {success}
-            </div>
-          )}
+        {!checking &&
+          !recoveryReady && (
+            <>
+              {error && (
+                <div
+                  style={errorStyle}
+                >
+                  {error}
+                </div>
+              )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              ...buttonStyle,
-              opacity: loading ? 0.65 : 1,
-              cursor: loading
-                ? "not-allowed"
-                : "pointer",
-            }}
-          >
-            {loading
-              ? "Updating..."
-              : "Update Password"}
-          </button>
-        </form>
+              <button
+                type="button"
+                onClick={goToLogin}
+                style={buttonStyle}
+              >
+                Request New Reset Link
+              </button>
+            </>
+          )}
       </div>
     </main>
   );
@@ -159,24 +387,27 @@ const pageStyle: React.CSSProperties = {
   justifyContent: "center",
   alignItems: "center",
   padding: "24px",
-  background: "#020617",
+  background:
+    "linear-gradient(135deg, #020617 0%, #0f172a 100%)",
   color: "#f8fafc",
 };
 
 const cardStyle: React.CSSProperties = {
   width: "100%",
-  maxWidth: "420px",
-  padding: "32px",
+  maxWidth: "430px",
+  padding: "34px",
   background: "#0f172a",
   border: "1px solid #1e293b",
-  borderRadius: "16px",
+  borderRadius: "18px",
+  boxShadow:
+    "0 20px 60px rgba(0,0,0,.35)",
 };
 
 const brandStyle: React.CSSProperties = {
   color: "#22c55e",
   fontSize: "12px",
   fontWeight: 900,
-  letterSpacing: ".1em",
+  letterSpacing: ".12em",
   marginBottom: "10px",
 };
 
@@ -207,6 +438,7 @@ const inputStyle: React.CSSProperties = {
   padding: "13px",
   color: "#ffffff",
   marginBottom: "18px",
+  outline: "none",
 };
 
 const buttonStyle: React.CSSProperties = {
@@ -217,6 +449,7 @@ const buttonStyle: React.CSSProperties = {
   background: "#2563eb",
   color: "#ffffff",
   fontWeight: 900,
+  cursor: "pointer",
 };
 
 const errorStyle: React.CSSProperties = {
@@ -237,4 +470,13 @@ const successStyle: React.CSSProperties = {
   border:
     "1px solid rgba(34,197,94,.3)",
   color: "#86efac",
+};
+
+const infoStyle: React.CSSProperties = {
+  padding: "12px",
+  borderRadius: "8px",
+  background: "rgba(30,64,175,.25)",
+  border:
+    "1px solid rgba(96,165,250,.3)",
+  color: "#bfdbfe",
 };

@@ -1,36 +1,89 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
+
+function getSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const key =
+    process.env
+      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      "Supabase configuration is missing."
+    );
+  }
+
+  return createBrowserClient(url, key);
+}
 
 export default function AdminLoginPage() {
   const router = useRouter();
 
+  const [mode, setMode] = useState<
+    "login" | "forgot"
+  >("login");
+
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
+
   const [error, setError] = useState("");
+  const [success, setSuccess] =
+    useState("");
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+  useEffect(() => {
+    const params = new URLSearchParams(
+      window.location.search
+    );
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    if (params.get("reset") === "success") {
+      setSuccess(
+        "Password updated successfully. You can now sign in."
+      );
+
+      window.history.replaceState(
+        {},
+        "",
+        "/admin/login"
+      );
+    }
+  }, []);
+
+  async function handleLogin(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     try {
       setLoading(true);
       setError("");
+      setSuccess("");
 
       if (!email.trim()) {
-        throw new Error("Enter your email.");
+        throw new Error(
+          "Enter your email address."
+        );
       }
 
       if (!password) {
-        throw new Error("Enter your password.");
+        throw new Error(
+          "Enter your password."
+        );
       }
+
+      const supabase = getSupabase();
 
       const { error: loginError } =
         await supabase.auth.signInWithPassword({
@@ -55,24 +108,95 @@ export default function AdminLoginPage() {
     }
   }
 
+  async function handleForgotPassword(
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+
+      const cleanEmail = email.trim();
+
+      if (!cleanEmail) {
+        throw new Error(
+          "Enter your email address first."
+        );
+      }
+
+      const supabase = getSupabase();
+
+      const redirectTo =
+        `${window.location.origin}/admin/reset-password`;
+
+      const { error: resetError } =
+        await supabase.auth.resetPasswordForEmail(
+          cleanEmail,
+          {
+            redirectTo,
+          }
+        );
+
+      if (resetError) {
+        throw resetError;
+      }
+
+      setSuccess(
+        "Password recovery email sent. Check your inbox and open the newest reset link."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to send recovery email."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchMode() {
+    setError("");
+    setSuccess("");
+    setPassword("");
+
+    setMode((current) =>
+      current === "login"
+        ? "forgot"
+        : "login"
+    );
+  }
+
   return (
     <main style={pageStyle}>
-      <div style={loginBoxStyle}>
+      <div style={cardStyle}>
         <div style={brandStyle}>
           COINLYTX ADMIN
         </div>
 
         <h1 style={titleStyle}>
-          Sign in
+          {mode === "login"
+            ? "Admin Login"
+            : "Forgot Password"}
         </h1>
 
         <p style={descriptionStyle}>
-          Sign in to manage articles and SEO tools.
+          {mode === "login"
+            ? "Sign in to manage Coinlytx articles and SEO."
+            : "Enter your admin email and we will send you a password reset link."}
         </p>
 
-        <form onSubmit={handleLogin}>
+        <form
+          onSubmit={
+            mode === "login"
+              ? handleLogin
+              : handleForgotPassword
+          }
+        >
           <label style={labelStyle}>
-            Email
+            Email Address
           </label>
 
           <input
@@ -81,29 +205,43 @@ export default function AdminLoginPage() {
             onChange={(event) =>
               setEmail(event.target.value)
             }
-            placeholder="admin@coinlytx.com"
+            placeholder="you@example.com"
             autoComplete="email"
+            required
             style={inputStyle}
           />
 
-          <label style={labelStyle}>
-            Password
-          </label>
+          {mode === "login" && (
+            <>
+              <label style={labelStyle}>
+                Password
+              </label>
 
-          <input
-            type="password"
-            value={password}
-            onChange={(event) =>
-              setPassword(event.target.value)
-            }
-            placeholder="Enter password"
-            autoComplete="current-password"
-            style={inputStyle}
-          />
+              <input
+                type="password"
+                value={password}
+                onChange={(event) =>
+                  setPassword(
+                    event.target.value
+                  )
+                }
+                placeholder="Your password"
+                autoComplete="current-password"
+                required
+                style={inputStyle}
+              />
+            </>
+          )}
 
           {error && (
             <div style={errorStyle}>
               {error}
+            </div>
+          )}
+
+          {success && (
+            <div style={successStyle}>
+              {success}
             </div>
           )}
 
@@ -119,10 +257,25 @@ export default function AdminLoginPage() {
             }}
           >
             {loading
-              ? "Signing in..."
-              : "Sign In"}
+              ? mode === "login"
+                ? "Signing in..."
+                : "Sending..."
+              : mode === "login"
+                ? "Sign In"
+                : "Send Reset Link"}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={switchMode}
+          disabled={loading}
+          style={linkButtonStyle}
+        >
+          {mode === "login"
+            ? "Forgot your password?"
+            : "Back to login"}
+        </button>
       </div>
     </main>
   );
@@ -131,47 +284,46 @@ export default function AdminLoginPage() {
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   display: "flex",
-  alignItems: "center",
   justifyContent: "center",
-  background: "#020617",
+  alignItems: "center",
   padding: "24px",
+  background:
+    "linear-gradient(135deg, #020617 0%, #0f172a 100%)",
   color: "#f8fafc",
 };
 
-const loginBoxStyle: React.CSSProperties = {
+const cardStyle: React.CSSProperties = {
   width: "100%",
-  maxWidth: "420px",
+  maxWidth: "430px",
+  padding: "34px",
   background: "#0f172a",
   border: "1px solid #1e293b",
-  borderRadius: "16px",
-  padding: "32px",
+  borderRadius: "18px",
   boxShadow:
-    "0 24px 70px rgba(0,0,0,.35)",
+    "0 20px 60px rgba(0,0,0,.35)",
 };
 
 const brandStyle: React.CSSProperties = {
   color: "#22c55e",
   fontSize: "12px",
   fontWeight: 900,
-  letterSpacing: ".1em",
+  letterSpacing: ".12em",
   marginBottom: "10px",
 };
 
 const titleStyle: React.CSSProperties = {
+  fontSize: "30px",
   margin: "0 0 8px",
-  fontSize: "32px",
 };
 
 const descriptionStyle: React.CSSProperties = {
   color: "#94a3b8",
   lineHeight: 1.6,
-  margin: "0 0 28px",
-  fontSize: "14px",
+  marginBottom: "26px",
 };
 
 const labelStyle: React.CSSProperties = {
   display: "block",
-  color: "#e2e8f0",
   fontSize: "13px",
   fontWeight: 800,
   marginBottom: "8px",
@@ -181,13 +333,12 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
   background: "#020617",
-  color: "#f8fafc",
   border: "1px solid #334155",
   borderRadius: "9px",
-  padding: "13px 14px",
-  fontSize: "14px",
-  outline: "none",
+  padding: "13px",
+  color: "#ffffff",
   marginBottom: "18px",
+  outline: "none",
 };
 
 const buttonStyle: React.CSSProperties = {
@@ -197,18 +348,36 @@ const buttonStyle: React.CSSProperties = {
   padding: "14px",
   background: "#2563eb",
   color: "#ffffff",
-  fontSize: "14px",
   fontWeight: 900,
+  fontSize: "14px",
+};
+
+const linkButtonStyle: React.CSSProperties = {
+  width: "100%",
+  marginTop: "18px",
+  border: 0,
+  background: "transparent",
+  color: "#60a5fa",
+  cursor: "pointer",
+  fontWeight: 700,
 };
 
 const errorStyle: React.CSSProperties = {
+  padding: "11px",
+  marginBottom: "15px",
+  borderRadius: "8px",
   background: "rgba(127,29,29,.3)",
   border:
     "1px solid rgba(248,113,113,.3)",
   color: "#fca5a5",
-  borderRadius: "8px",
+};
+
+const successStyle: React.CSSProperties = {
   padding: "11px",
-  fontSize: "12px",
-  lineHeight: 1.5,
-  marginBottom: "16px",
+  marginBottom: "15px",
+  borderRadius: "8px",
+  background: "rgba(20,83,45,.35)",
+  border:
+    "1px solid rgba(34,197,94,.3)",
+  color: "#86efac",
 };
