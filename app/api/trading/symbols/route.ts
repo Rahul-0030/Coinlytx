@@ -8,9 +8,6 @@ export const dynamic = "force-dynamic";
 const SPOT_BASE =
   "https://data-api.binance.vision";
 
-const FUTURES_BASE =
-  "https://fapi.binance.com";
-
 const EXCLUDED_BASE_ASSETS =
   new Set([
     "USDT",
@@ -32,17 +29,7 @@ type SpotExchangeInfo = {
   }[];
 };
 
-type FuturesExchangeInfo = {
-  symbols: {
-    symbol: string;
-    status: string;
-    baseAsset: string;
-    quoteAsset: string;
-    contractType: string;
-  }[];
-};
-
-type FuturesTicker = {
+type SpotTicker = {
   symbol: string;
 
   lastPrice: string;
@@ -54,6 +41,15 @@ type FuturesTicker = {
   volume: string;
 };
 
+type MarketItem = {
+  symbol: string;
+  baseAsset: string;
+  price: number;
+  change24h: number;
+  quoteVolume24h: number;
+  volume24h: number;
+};
+
 async function fetchJson<T>(
   url: string
 ): Promise<T> {
@@ -62,12 +58,33 @@ async function fetchJson<T>(
       url,
       {
         cache: "no-store",
+
+        signal:
+          AbortSignal.timeout(
+            15000
+          ),
       }
     );
 
   if (!response.ok) {
+    const body =
+      await response
+        .text()
+        .catch(
+          () => ""
+        );
+
     throw new Error(
-      `Binance request failed: ${response.status}`
+      `Binance Spot request failed: ${
+        response.status
+      }${
+        body
+          ? ` - ${body.slice(
+              0,
+              150
+            )}`
+          : ""
+      }`
     );
   }
 
@@ -93,75 +110,43 @@ export async function GET() {
   try {
     const [
       spotInfo,
-      futuresInfo,
-      futuresTickers,
+      spotTickers,
     ] =
       await Promise.all([
         fetchJson<SpotExchangeInfo>(
           `${SPOT_BASE}/api/v3/exchangeInfo`
         ),
 
-        fetchJson<FuturesExchangeInfo>(
-          `${FUTURES_BASE}/fapi/v1/exchangeInfo`
-        ),
-
-        fetchJson<FuturesTicker[]>(
-          `${FUTURES_BASE}/fapi/v1/ticker/24hr`
+        fetchJson<SpotTicker[]>(
+          `${SPOT_BASE}/api/v3/ticker/24hr`
         ),
       ]);
 
     /*
-     * Spot USDT pairs that are
-     * currently trading.
+     * Find active Binance Spot
+     * USDT markets.
      */
 
     const spotSymbols =
-      new Set(
-        spotInfo.symbols
-          .filter(
-            (item) =>
-              item.quoteAsset ===
-                "USDT" &&
-              item.status ===
-                "TRADING" &&
-              item
-                .isSpotTradingAllowed !==
-                false &&
-              !EXCLUDED_BASE_ASSETS.has(
-                item.baseAsset
-              )
-          )
-          .map(
-            (item) =>
-              item.symbol
-          )
-      );
-
-    /*
-     * Futures USDT perpetuals
-     * that are currently trading.
-     */
-
-    const futuresSymbols =
       new Map<
         string,
         {
-          symbol: string;
           baseAsset: string;
         }
       >();
 
     for (
       const item of
-      futuresInfo.symbols
+      spotInfo.symbols
     ) {
       if (
         item.quoteAsset !==
           "USDT" ||
         item.status !==
           "TRADING" ||
-        item.contractType !==
-          "PERPETUAL" ||
+        item
+          .isSpotTradingAllowed ===
+          false ||
         EXCLUDED_BASE_ASSETS.has(
           item.baseAsset
         )
@@ -169,12 +154,9 @@ export async function GET() {
         continue;
       }
 
-      futuresSymbols.set(
+      spotSymbols.set(
         item.symbol,
         {
-          symbol:
-            item.symbol,
-
           baseAsset:
             item.baseAsset,
         }
@@ -182,13 +164,13 @@ export async function GET() {
     }
 
     /*
-     * Only keep coins supported
-     * by BOTH spot and futures.
+     * Build ticker map using the
+     * Binance Spot 24h market data.
      */
 
     const tickerMap =
       new Map(
-        futuresTickers.map(
+        spotTickers.map(
           (ticker) => [
             ticker.symbol,
             ticker,
@@ -196,30 +178,17 @@ export async function GET() {
         )
       );
 
-    const markets: {
-      symbol: string;
-      baseAsset: string;
-      price: number;
-      change24h: number;
-      quoteVolume24h: number;
-      volume24h: number;
-    }[] = [];
+    const markets:
+      MarketItem[] =
+      [];
 
     for (
       const [
         symbol,
         info,
       ] of
-      futuresSymbols
+      spotSymbols
     ) {
-      if (
-        !spotSymbols.has(
-          symbol
-        )
-      ) {
-        continue;
-      }
-
       const ticker =
         tickerMap.get(
           symbol
@@ -229,14 +198,19 @@ export async function GET() {
         continue;
       }
 
+      const price =
+        safeNumber(
+          ticker.lastPrice
+        );
+
       const quoteVolume =
         safeNumber(
           ticker.quoteVolume
         );
 
       if (
-        quoteVolume <=
-        0
+        price <= 0 ||
+        quoteVolume <= 0
       ) {
         continue;
       }
@@ -247,10 +221,7 @@ export async function GET() {
         baseAsset:
           info.baseAsset,
 
-        price:
-          safeNumber(
-            ticker.lastPrice
-          ),
+        price,
 
         change24h:
           safeNumber(
@@ -269,8 +240,8 @@ export async function GET() {
     }
 
     /*
-     * Highest-liquidity markets
-     * first.
+     * Highest 24-hour USDT
+     * trading volume first.
      */
 
     markets.sort(
@@ -302,13 +273,13 @@ export async function GET() {
           true,
 
         futuresRequired:
-          true,
-
-        futuresContract:
-          "PERPETUAL",
+          false,
 
         ranking:
-          "24h futures quote volume",
+          "24h spot quote volume",
+
+        source:
+          "Binance Spot public market-data endpoint",
 
         limit:
           50,
@@ -331,10 +302,20 @@ export async function GET() {
         success:
           false,
 
+        count:
+          0,
+
+        symbols:
+          [],
+
         error:
           error instanceof Error
             ? error.message
             : "Unable to load trading markets.",
+
+        updatedAt:
+          new Date()
+            .toISOString(),
       },
       {
         status:
