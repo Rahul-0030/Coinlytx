@@ -10,74 +10,86 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const FUTURES_BASE =
-  "https://fapi.binance.com";
+const OKX_BASE = "https://openapi.okx.com";
 
-type PremiumIndexResponse = {
-  symbol: string;
-  markPrice: string;
-  indexPrice: string;
-  estimatedSettlePrice: string;
-  lastFundingRate: string;
-  nextFundingTime: number;
-  interestRate: string;
-  time: number;
+type OkxResponse<T> = {
+  code: string;
+  msg: string;
+  data: T[];
 };
 
-type OpenInterestResponse = {
-  openInterest: string;
-  symbol: string;
-  time: number;
+type FundingData = {
+  instType?: string;
+  instId?: string;
+  fundingRate?: string;
+  nextFundingTime?: string;
+  fundingTime?: string;
 };
 
-type DepthResponse = {
-  lastUpdateId: number;
-  E?: number;
-  T?: number;
-
-  bids: [
-    string,
-    string
-  ][];
-
-  asks: [
-    string,
-    string
-  ][];
+type MarkPriceData = {
+  instType?: string;
+  instId?: string;
+  markPx?: string;
+  ts?: string;
 };
 
-type OpenInterestHistory = {
-  symbol: string;
-  sumOpenInterest: string;
-  sumOpenInterestValue: string;
-  timestamp: number;
-}[];
+type IndexTickerData = {
+  instId?: string;
+  idxPx?: string;
+  high24h?: string;
+  low24h?: string;
+  open24h?: string;
+  sodUtc0?: string;
+  sodUtc8?: string;
+  ts?: string;
+};
 
-type TakerRatioHistory = {
-  buySellRatio: string;
-  buyVol: string;
-  sellVol: string;
-  timestamp: number;
-}[];
+type OpenInterestData = {
+  instType?: string;
+  instId?: string;
+  oi?: string;
+  oiCcy?: string;
+  oiUsd?: string;
+  ts?: string;
+};
 
-type PositioningHistory = {
-  symbol: string;
-  longShortRatio: string;
-  longAccount: string;
-  shortAccount: string;
-  timestamp: number;
-}[];
+type BookData = {
+  asks?: string[][];
+  bids?: string[][];
+  ts?: string;
+};
+
+type TradeData = {
+  instId?: string;
+  tradeId?: string;
+  px?: string;
+  sz?: string;
+  side?: "buy" | "sell" | string;
+  ts?: string;
+  source?: string;
+};
+
+type InstrumentData = {
+  instType?: string;
+  instId?: string;
+  uly?: string;
+  instFamily?: string;
+  baseCcy?: string;
+  quoteCcy?: string;
+  settleCcy?: string;
+  ctVal?: string;
+  ctMult?: string;
+  ctValCcy?: string;
+  state?: string;
+};
 
 function safeNumber(
   value: unknown,
   fallback = 0
 ) {
-  const result =
-    Number(value);
+  const result = Number(value);
 
-  return Number.isFinite(
-    result
-  )
+  return Number.isFinite(result)
     ? result
     : fallback;
 }
@@ -86,20 +98,14 @@ function round(
   value: number,
   decimals = 4
 ) {
-  if (
-    !Number.isFinite(value)
-  ) {
+  if (!Number.isFinite(value)) {
     return 0;
   }
 
-  const factor =
-    10 ** decimals;
+  const factor = 10 ** decimals;
 
   return (
-    Math.round(
-      value *
-        factor
-    ) /
+    Math.round(value * factor) /
     factor
   );
 }
@@ -111,19 +117,59 @@ function clamp(
 ) {
   return Math.max(
     min,
-    Math.min(
-      max,
-      value
-    )
+    Math.min(max, value)
   );
 }
 
-async function fetchJson<T>(
-  url: string
-): Promise<T> {
+function toOkxSwapSymbol(
+  symbol: string
+) {
+  const normalized =
+    symbol.toUpperCase();
+
+  if (
+    !normalized.endsWith("USDT")
+  ) {
+    throw new Error(
+      `Unsupported derivatives symbol: ${symbol}. Only USDT pairs are currently supported.`
+    );
+  }
+
+  const base =
+    normalized.slice(
+      0,
+      -4
+    );
+
+  if (!base) {
+    throw new Error(
+      `Invalid trading symbol: ${symbol}`
+    );
+  }
+
+  return `${base}-USDT-SWAP`;
+}
+
+function toOkxIndexSymbol(
+  symbol: string
+) {
+  const normalized =
+    symbol.toUpperCase();
+
+  const base =
+    normalized.endsWith("USDT")
+      ? normalized.slice(0, -4)
+      : normalized;
+
+  return `${base}-USDT`;
+}
+
+async function fetchOkx<T>(
+  path: string
+): Promise<OkxResponse<T>> {
   const response =
     await fetch(
-      url,
+      `${OKX_BASE}${path}`,
       {
         cache: "no-store",
 
@@ -134,51 +180,41 @@ async function fetchJson<T>(
       }
     );
 
-  if (
-    !response.ok
-  ) {
-    let message =
-      `Binance Futures request failed: ${response.status}`;
-
-    try {
-      const body =
-        await response.json();
-
-      if (
-        body &&
-        typeof body.msg ===
-          "string"
-      ) {
-        message =
-          body.msg;
-      }
-    } catch {
-      // Ignore parsing failure.
-    }
-
+  if (!response.ok) {
     throw new Error(
-      message
+      `OKX request failed: HTTP ${response.status}`
     );
   }
 
-  return (
-    await response.json()
-  ) as T;
+  const body =
+    (await response.json()) as
+      OkxResponse<T>;
+
+  if (
+    body.code !== "0"
+  ) {
+    throw new Error(
+      body.msg ||
+        `OKX API error ${body.code}`
+    );
+  }
+
+  return body;
 }
 
 async function optionalFetch<T>(
-  url: string
-): Promise<T | null> {
+  path: string
+): Promise<
+  OkxResponse<T> | null
+> {
   try {
-    return await fetchJson<T>(
-      url
+    return await fetchOkx<T>(
+      path
     );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.warn(
-      "Optional futures request failed:",
-      url,
+      "Optional OKX request failed:",
+      path,
       error
     );
 
@@ -186,11 +222,32 @@ async function optionalFetch<T>(
   }
 }
 
-function calculateLiquidity(
-  levels: [
-    string,
-    string
-  ][]
+function getContractBaseQuantity(
+  contracts: number,
+  contractValue: number,
+  contractMultiplier: number
+) {
+  const multiplier =
+    contractMultiplier > 0
+      ? contractMultiplier
+      : 1;
+
+  const value =
+    contractValue > 0
+      ? contractValue
+      : 1;
+
+  return (
+    contracts *
+    value *
+    multiplier
+  );
+}
+
+function calculateBookLiquidity(
+  levels: string[][],
+  contractValue: number,
+  contractMultiplier: number
 ) {
   return levels.reduce(
     (
@@ -198,23 +255,92 @@ function calculateLiquidity(
       level
     ) => {
       const price =
-        safeNumber(
-          level[0]
-        );
+        safeNumber(level[0]);
 
-      const quantity =
-        safeNumber(
-          level[1]
+      const contracts =
+        safeNumber(level[1]);
+
+      const baseQuantity =
+        getContractBaseQuantity(
+          contracts,
+          contractValue,
+          contractMultiplier
         );
 
       return (
         total +
-        price *
-          quantity
+        price * baseQuantity
       );
     },
     0
   );
+}
+
+function calculateTradeFlow(
+  trades: TradeData[],
+  contractValue: number,
+  contractMultiplier: number
+) {
+  let buyVolume = 0;
+  let sellVolume = 0;
+
+  let buyNotional = 0;
+  let sellNotional = 0;
+
+  for (const trade of trades) {
+    const contracts =
+      safeNumber(trade.sz);
+
+    const price =
+      safeNumber(trade.px);
+
+    const baseQuantity =
+      getContractBaseQuantity(
+        contracts,
+        contractValue,
+        contractMultiplier
+      );
+
+    const notional =
+      baseQuantity *
+      price;
+
+    if (
+      trade.side === "buy"
+    ) {
+      buyVolume +=
+        baseQuantity;
+
+      buyNotional +=
+        notional;
+    }
+
+    if (
+      trade.side === "sell"
+    ) {
+      sellVolume +=
+        baseQuantity;
+
+      sellNotional +=
+        notional;
+    }
+  }
+
+  const buySellRatio =
+    sellNotional > 0
+      ? buyNotional /
+        sellNotional
+      : buyNotional > 0
+        ? 2
+        : 1;
+
+  return {
+    buyVolume,
+    sellVolume,
+    buyNotional,
+    sellNotional,
+    buySellRatio,
+  };
 }
 
 export async function GET(
@@ -225,14 +351,6 @@ export async function GET(
       request.nextUrl
         .searchParams;
 
-    /*
-     * No 5-coin restriction.
-     *
-     * DOGEUSDT, ADAUSDT,
-     * LINKUSDT, SUIUSDT etc.
-     * can pass directly.
-     */
-
     const symbol =
       normalizeTradingSymbol(
         searchParams.get(
@@ -241,114 +359,178 @@ export async function GET(
         "BTCUSDT"
       );
 
+    const okxSymbol =
+      toOkxSwapSymbol(
+        symbol
+      );
+
+    const indexSymbol =
+      toOkxIndexSymbol(
+        symbol
+      );
+
     /*
-     * Required endpoints.
+     * Required OKX public
+     * derivatives data.
      */
 
-    const premiumUrl =
-      `${FUTURES_BASE}/fapi/v1/premiumIndex?symbol=${encodeURIComponent(
-        symbol
+    const markPricePath =
+      `/api/v5/public/mark-price?instType=SWAP&instId=${encodeURIComponent(
+        okxSymbol
       )}`;
 
-    const openInterestUrl =
-      `${FUTURES_BASE}/fapi/v1/openInterest?symbol=${encodeURIComponent(
-        symbol
+    const openInterestPath =
+      `/api/v5/public/open-interest?instType=SWAP&instId=${encodeURIComponent(
+        okxSymbol
       )}`;
 
-    const depthUrl =
-      `${FUTURES_BASE}/fapi/v1/depth?symbol=${encodeURIComponent(
-        symbol
-      )}&limit=50`;
+    const orderBookPath =
+      `/api/v5/market/books?instId=${encodeURIComponent(
+        okxSymbol
+      )}&sz=50`;
+
+    const instrumentPath =
+      `/api/v5/public/instruments?instType=SWAP&instId=${encodeURIComponent(
+        okxSymbol
+      )}`;
 
     /*
-     * Optional historical/
-     * positioning endpoints.
+     * Optional data.
      *
-     * If one endpoint is
-     * temporarily unavailable,
-     * the entire signal should
-     * not fail.
+     * A temporary failure in one
+     * of these should not crash
+     * the entire derivatives
+     * engine.
      */
 
-    const openInterestHistoryUrl =
-      `${FUTURES_BASE}/futures/data/openInterestHist?symbol=${encodeURIComponent(
-        symbol
-      )}&period=5m&limit=13`;
+    const fundingPath =
+      `/api/v5/public/funding-rate?instId=${encodeURIComponent(
+        okxSymbol
+      )}`;
 
-    const takerRatioUrl =
-      `${FUTURES_BASE}/futures/data/takerlongshortRatio?symbol=${encodeURIComponent(
-        symbol
-      )}&period=5m&limit=1`;
+    const indexPath =
+      `/api/v5/market/index-tickers?instId=${encodeURIComponent(
+        indexSymbol
+      )}`;
 
-    const positioningUrl =
-      `${FUTURES_BASE}/futures/data/globalLongShortAccountRatio?symbol=${encodeURIComponent(
-        symbol
-      )}&period=5m&limit=1`;
+    const tradesPath =
+      `/api/v5/market/trades?instId=${encodeURIComponent(
+        okxSymbol
+      )}&limit=500`;
 
     const [
-      premium,
-      openInterest,
-      depth,
-      openInterestHistory,
-      takerHistory,
-      positioningHistory,
+      markResponse,
+      openInterestResponse,
+      bookResponse,
+      instrumentResponse,
+      fundingResponse,
+      indexResponse,
+      tradesResponse,
     ] =
       await Promise.all([
-        fetchJson<PremiumIndexResponse>(
-          premiumUrl
+        fetchOkx<MarkPriceData>(
+          markPricePath
         ),
 
-        fetchJson<OpenInterestResponse>(
-          openInterestUrl
+        fetchOkx<OpenInterestData>(
+          openInterestPath
         ),
 
-        fetchJson<DepthResponse>(
-          depthUrl
+        fetchOkx<BookData>(
+          orderBookPath
         ),
 
-        optionalFetch<OpenInterestHistory>(
-          openInterestHistoryUrl
+        fetchOkx<InstrumentData>(
+          instrumentPath
         ),
 
-        optionalFetch<TakerRatioHistory>(
-          takerRatioUrl
+        optionalFetch<FundingData>(
+          fundingPath
         ),
 
-        optionalFetch<PositioningHistory>(
-          positioningUrl
+        optionalFetch<IndexTickerData>(
+          indexPath
+        ),
+
+        optionalFetch<TradeData>(
+          tradesPath
         ),
       ]);
 
-    /*
-     * Safety check.
-     */
+    const markData =
+      markResponse.data[0];
+
+    const oiData =
+      openInterestResponse
+        .data[0];
+
+    const bookData =
+      bookResponse.data[0];
+
+    const instrument =
+      instrumentResponse
+        .data[0];
 
     if (
-      premium.symbol !==
-      symbol
+      !markData ||
+      !oiData ||
+      !bookData ||
+      !instrument
     ) {
       throw new Error(
-        `Derivatives symbol mismatch. Requested ${symbol}, received ${premium.symbol}.`
+        `OKX derivatives market ${okxSymbol} is unavailable or unsupported.`
+      );
+    }
+
+    if (
+      instrument.state &&
+      instrument.state !==
+        "live"
+    ) {
+      throw new Error(
+        `OKX derivatives market ${okxSymbol} is not currently live.`
       );
     }
 
     /*
-     * Prices
+     * Contract specification.
+     */
+
+    const contractValue =
+      safeNumber(
+        instrument.ctVal,
+        1
+      );
+
+    const contractMultiplier =
+      safeNumber(
+        instrument.ctMult,
+        1
+      );
+
+    /*
+     * Mark + index price.
      */
 
     const markPrice =
       safeNumber(
-        premium.markPrice
+        markData.markPx
       );
+
+    const indexData =
+      indexResponse?.data?.[0] ??
+      null;
 
     const indexPrice =
-      safeNumber(
-        premium.indexPrice
-      );
+      indexData
+        ? safeNumber(
+            indexData.idxPx,
+            markPrice
+          )
+        : markPrice;
 
     const basisPercent =
-      indexPrice >
-      0
+      indexPrice > 0
         ? (
             (
               markPrice -
@@ -360,116 +542,130 @@ export async function GET(
         : 0;
 
     /*
-     * Funding
+     * Funding.
      */
 
+    const fundingData =
+      fundingResponse?.data?.[0] ??
+      null;
+
     const fundingRate =
-      safeNumber(
-        premium.lastFundingRate
-      );
+      fundingData
+        ? safeNumber(
+            fundingData.fundingRate
+          )
+        : 0;
 
     const fundingPercent =
-      fundingRate *
-      100;
+      fundingRate * 100;
+
+    const nextFundingTime =
+      fundingData
+        ? safeNumber(
+            fundingData.nextFundingTime
+          )
+        : 0;
 
     /*
-     * Open interest
+     * Open interest.
      */
 
     const openInterestContracts =
       safeNumber(
-        openInterest.openInterest
+        oiData.oi
+      );
+
+    const openInterestBase =
+      safeNumber(
+        oiData.oiCcy
       );
 
     let openInterestNotional =
-      openInterestContracts *
-      markPrice;
-
-    let openInterestChangePercent =
-      0;
+      safeNumber(
+        oiData.oiUsd
+      );
 
     if (
-      openInterestHistory &&
-      openInterestHistory.length >=
-        2
+      openInterestNotional <=
+        0 &&
+      openInterestBase > 0
     ) {
-      const first =
-        openInterestHistory[0];
+      openInterestNotional =
+        openInterestBase *
+        markPrice;
+    }
 
-      const last =
-        openInterestHistory[
-          openInterestHistory.length -
-            1
-        ];
-
-      const firstValue =
-        safeNumber(
-          first.sumOpenInterestValue
+    if (
+      openInterestNotional <=
+      0
+    ) {
+      const baseQuantity =
+        getContractBaseQuantity(
+          openInterestContracts,
+          contractValue,
+          contractMultiplier
         );
 
-      const lastValue =
-        safeNumber(
-          last.sumOpenInterestValue
-        );
-
-      if (
-        lastValue >
-        0
-      ) {
-        openInterestNotional =
-          lastValue;
-      }
-
-      if (
-        firstValue >
-        0
-      ) {
-        openInterestChangePercent =
-          (
-            (
-              lastValue -
-              firstValue
-            ) /
-            firstValue
-          ) *
-          100;
-      }
+      openInterestNotional =
+        baseQuantity *
+        markPrice;
     }
 
     /*
-     * Order book
+     * We do NOT fabricate a
+     * historical OI change.
+     *
+     * Current OKX OI is real,
+     * but this route does not
+     * currently maintain an
+     * hourly OI snapshot store.
      */
 
+    const openInterestChangePercent =
+      0;
+
+    /*
+     * Order book.
+     */
+
+    const bids =
+      Array.isArray(
+        bookData.bids
+      )
+        ? bookData.bids
+        : [];
+
+    const asks =
+      Array.isArray(
+        bookData.asks
+      )
+        ? bookData.asks
+        : [];
+
     const bestBid =
-      depth.bids.length >
-      0
+      bids.length > 0
         ? safeNumber(
-            depth.bids[0][0]
+            bids[0][0]
           )
         : 0;
 
     const bestAsk =
-      depth.asks.length >
-      0
+      asks.length > 0
         ? safeNumber(
-            depth.asks[0][0]
+            asks[0][0]
           )
         : 0;
 
     const spread =
-      bestAsk >
-        0 &&
-      bestBid >
-        0
+      bestAsk > 0 &&
+      bestBid > 0
         ? bestAsk -
           bestBid
         : 0;
 
     const midpoint =
-      bestAsk >
-        0 &&
-      bestBid >
-        0
+      bestAsk > 0 &&
+      bestBid > 0
         ? (
             bestAsk +
             bestBid
@@ -478,8 +674,7 @@ export async function GET(
         : 0;
 
     const spreadBps =
-      midpoint >
-      0
+      midpoint > 0
         ? (
             spread /
             midpoint
@@ -488,13 +683,17 @@ export async function GET(
         : 0;
 
     const bidLiquidityUsd =
-      calculateLiquidity(
-        depth.bids
+      calculateBookLiquidity(
+        bids,
+        contractValue,
+        contractMultiplier
       );
 
     const askLiquidityUsd =
-      calculateLiquidity(
-        depth.asks
+      calculateBookLiquidity(
+        asks,
+        contractValue,
+        contractMultiplier
       );
 
     const totalBookLiquidity =
@@ -502,8 +701,7 @@ export async function GET(
       askLiquidityUsd;
 
     const imbalancePercent =
-      totalBookLiquidity >
-      0
+      totalBookLiquidity > 0
         ? (
             (
               bidLiquidityUsd -
@@ -515,86 +713,58 @@ export async function GET(
         : 0;
 
     /*
-     * Aggressive taker flow
+     * Taker flow from recent
+     * OKX public SWAP trades.
      */
 
-    const latestTaker =
-      takerHistory &&
-      takerHistory.length >
-        0
-        ? takerHistory[
-            takerHistory.length -
-              1
-          ]
-        : null;
+    const trades =
+      tradesResponse?.data ??
+      [];
+
+    const tradeFlow =
+      calculateTradeFlow(
+        trades,
+        contractValue,
+        contractMultiplier
+      );
 
     const takerBuySellRatio =
-      latestTaker
-        ? safeNumber(
-            latestTaker.buySellRatio,
-            1
-          )
-        : 1;
+      tradeFlow.buySellRatio;
 
     const takerBuyVolume =
-      latestTaker
-        ? safeNumber(
-            latestTaker.buyVol
-          )
-        : 0;
+      tradeFlow.buyVolume;
 
     const takerSellVolume =
-      latestTaker
-        ? safeNumber(
-            latestTaker.sellVol
-          )
-        : 0;
+      tradeFlow.sellVolume;
 
     /*
-     * Global long/short
-     * positioning.
+     * Binance previously supplied
+     * a global long/short account
+     * ratio.
+     *
+     * We deliberately DO NOT
+     * manufacture this metric.
+     *
+     * Neutral compatibility values
+     * are returned so existing
+     * signal/final/dashboard code
+     * continues working.
      */
 
-    const latestPositioning =
-      positioningHistory &&
-      positioningHistory.length >
-        0
-        ? positioningHistory[
-            positioningHistory.length -
-              1
-          ]
-        : null;
-
     const longShortRatio =
-      latestPositioning
-        ? safeNumber(
-            latestPositioning.longShortRatio,
-            1
-          )
-        : 1;
+      1;
 
     const longAccountsPercent =
-      latestPositioning
-        ? safeNumber(
-            latestPositioning.longAccount
-          ) *
-          100
-        : 50;
+      50;
 
     const shortAccountsPercent =
-      latestPositioning
-        ? safeNumber(
-            latestPositioning.shortAccount
-          ) *
-          100
-        : 50;
+      50;
 
     /*
      * Derivatives scoring.
      */
 
-    let score =
-      0;
+    let score = 0;
 
     const bullishReasons:
       string[] = [];
@@ -613,41 +783,37 @@ export async function GET(
       imbalancePercent >=
       20
     ) {
-      score +=
-        20;
+      score += 20;
 
       bullishReasons.push(
-        "Futures order book is strongly bid-heavy."
+        "Perpetual order book is strongly bid-heavy."
       );
     } else if (
       imbalancePercent >=
       7
     ) {
-      score +=
-        10;
+      score += 10;
 
       bullishReasons.push(
-        "Futures order book is moderately bid-heavy."
+        "Perpetual order book is moderately bid-heavy."
       );
     } else if (
       imbalancePercent <=
       -20
     ) {
-      score -=
-        20;
+      score -= 20;
 
       bearishReasons.push(
-        "Futures order book is strongly ask-heavy."
+        "Perpetual order book is strongly ask-heavy."
       );
     } else if (
       imbalancePercent <=
       -7
     ) {
-      score -=
-        10;
+      score -= 10;
 
       bearishReasons.push(
-        "Futures order book is moderately ask-heavy."
+        "Perpetual order book is moderately ask-heavy."
       );
     }
 
@@ -656,181 +822,159 @@ export async function GET(
      */
 
     if (
-      takerBuySellRatio >=
-      1.3
+      trades.length > 0
     ) {
-      score +=
-        20;
+      if (
+        takerBuySellRatio >=
+        1.3
+      ) {
+        score += 20;
 
-      bullishReasons.push(
-        "Aggressive taker buying is significantly stronger than taker selling."
-      );
-    } else if (
-      takerBuySellRatio >=
-      1.08
+        bullishReasons.push(
+          "Recent aggressive taker buying is significantly stronger than taker selling."
+        );
+      } else if (
+        takerBuySellRatio >=
+        1.08
+      ) {
+        score += 10;
+
+        bullishReasons.push(
+          "Recent aggressive taker buying is stronger than taker selling."
+        );
+      } else if (
+        takerBuySellRatio <=
+        0.7
+      ) {
+        score -= 20;
+
+        bearishReasons.push(
+          "Recent aggressive taker selling is significantly stronger than taker buying."
+        );
+      } else if (
+        takerBuySellRatio <=
+        0.92
+      ) {
+        score -= 10;
+
+        bearishReasons.push(
+          "Recent aggressive taker selling is stronger than taker buying."
+        );
+      }
+    }
+
+    /*
+     * Funding crowding.
+     */
+
+    if (fundingData) {
+      if (
+        fundingPercent >=
+        0.05
+      ) {
+        score -= 10;
+
+        risks.push(
+          "Funding is strongly positive, suggesting crowded long positioning."
+        );
+      } else if (
+        fundingPercent >=
+        0.03
+      ) {
+        score -= 5;
+
+        risks.push(
+          "Funding is elevated and long positioning may be crowded."
+        );
+      }
+
+      if (
+        fundingPercent <=
+        -0.05
+      ) {
+        score += 10;
+
+        risks.push(
+          "Funding is strongly negative, suggesting crowded short positioning and squeeze risk."
+        );
+      } else if (
+        fundingPercent <=
+        -0.03
+      ) {
+        score += 5;
+
+        risks.push(
+          "Funding is negative and short positioning may be crowded."
+        );
+      }
+    }
+
+    /*
+     * Basis.
+     */
+
+    if (indexData) {
+      if (
+        basisPercent >=
+        0.15
+      ) {
+        score += 5;
+
+        bullishReasons.push(
+          "Perpetual mark price is trading above the underlying index."
+        );
+      }
+
+      if (
+        basisPercent <=
+        -0.15
+      ) {
+        score -= 5;
+
+        bearishReasons.push(
+          "Perpetual mark price is trading below the underlying index."
+        );
+      }
+    }
+
+    /*
+     * OI level is useful, but
+     * direction is not inferred
+     * without historical data.
+     */
+
+    if (
+      openInterestNotional <=
+      0
     ) {
-      score +=
-        10;
-
-      bullishReasons.push(
-        "Aggressive taker buying is stronger than taker selling."
-      );
-    } else if (
-      takerBuySellRatio <=
-      0.7
-    ) {
-      score -=
-        20;
-
-      bearishReasons.push(
-        "Aggressive taker selling is significantly stronger than taker buying."
-      );
-    } else if (
-      takerBuySellRatio <=
-      0.92
-    ) {
-      score -=
-        10;
-
-      bearishReasons.push(
-        "Aggressive taker selling is stronger than taker buying."
+      risks.push(
+        "Open-interest notional is currently unavailable."
       );
     }
 
     /*
-     * Funding.
-     *
-     * Extremely positive funding
-     * can indicate crowded longs.
-     *
-     * Extremely negative funding
-     * can indicate crowded shorts.
+     * Missing optional data should
+     * reduce confidence rather than
+     * create fake neutral evidence.
      */
 
-    if (
-      fundingPercent >=
-      0.05
-    ) {
-      score -=
-        10;
-
+    if (!fundingData) {
       risks.push(
-        "Funding is strongly positive, suggesting crowded long positioning."
+        "Funding-rate data is temporarily unavailable."
       );
-    } else if (
-      fundingPercent >=
-      0.03
-    ) {
-      score -=
-        5;
+    }
 
+    if (!indexData) {
       risks.push(
-        "Funding is elevated and long positioning may be crowded."
+        "Index-price data is temporarily unavailable, so basis scoring was skipped."
       );
     }
 
     if (
-      fundingPercent <=
-      -0.05
-    ) {
-      score +=
-        10;
-
-      risks.push(
-        "Funding is strongly negative, suggesting crowded short positioning and squeeze risk."
-      );
-    } else if (
-      fundingPercent <=
-      -0.03
-    ) {
-      score +=
-        5;
-
-      risks.push(
-        "Funding is negative and short positioning may be crowded."
-      );
-    }
-
-    /*
-     * Global positioning.
-     *
-     * Treat extreme positioning
-     * mainly as a risk signal,
-     * not proof of direction.
-     */
-
-    if (
-      longShortRatio >=
-      2
-    ) {
-      score -=
-        5;
-
-      risks.push(
-        "Trader positioning is heavily long, increasing long-squeeze risk."
-      );
-    }
-
-    if (
-      longShortRatio <=
-      0.5
-    ) {
-      score +=
-        5;
-
-      risks.push(
-        "Trader positioning is heavily short, increasing short-squeeze risk."
-      );
-    }
-
-    /*
-     * Futures basis.
-     */
-
-    if (
-      basisPercent >=
-      0.15
-    ) {
-      score +=
-        5;
-
-      bullishReasons.push(
-        "Futures mark price is trading above the spot index."
-      );
-    }
-
-    if (
-      basisPercent <=
-      -0.15
-    ) {
-      score -=
-        5;
-
-      bearishReasons.push(
-        "Futures mark price is trading below the spot index."
-      );
-    }
-
-    /*
-     * Open interest is NOT
-     * inherently bullish/bearish.
-     */
-
-    if (
-      openInterestChangePercent >=
-      5
+      trades.length === 0
     ) {
       risks.push(
-        "Open interest is rising rapidly, indicating increased leverage and liquidation risk."
-      );
-    }
-
-    if (
-      openInterestChangePercent <=
-      -5
-    ) {
-      risks.push(
-        "Open interest is falling rapidly, suggesting leverage is being removed."
+        "Recent taker-flow data is temporarily unavailable."
       );
     }
 
@@ -863,14 +1007,34 @@ export async function GET(
 
     /*
      * Heuristic confidence.
+     *
+     * This is NOT win probability.
      */
 
     let confidence =
       48 +
-      Math.abs(
-        score
-      ) *
+      Math.abs(score) *
         0.5;
+
+    let missingOptional =
+      0;
+
+    if (!fundingData) {
+      missingOptional += 1;
+    }
+
+    if (!indexData) {
+      missingOptional += 1;
+    }
+
+    if (
+      trades.length === 0
+    ) {
+      missingOptional += 1;
+    }
+
+    confidence -=
+      missingOptional * 4;
 
     confidence =
       clamp(
@@ -885,10 +1049,12 @@ export async function GET(
     ];
 
     return NextResponse.json({
-      success:
-        true,
+      success: true,
 
       symbol,
+
+      providerSymbol:
+        okxSymbol,
 
       bias,
 
@@ -907,10 +1073,6 @@ export async function GET(
       confidenceType:
         "heuristic",
 
-      /*
-       * Funding
-       */
-
       funding: {
         rate:
           round(
@@ -924,22 +1086,14 @@ export async function GET(
             5
           ),
 
-        nextFundingTime:
-          premium.nextFundingTime,
+        nextFundingTime,
       },
-
-      /*
-       * Nested price object
-       * retained for your older
-       * signal/final routes.
-       */
 
       prices: {
         markPrice:
           round(
             markPrice,
-            markPrice <
-              1
+            markPrice < 1
               ? 8
               : 4
           ),
@@ -947,8 +1101,7 @@ export async function GET(
         indexPrice:
           round(
             indexPrice,
-            indexPrice <
-              1
+            indexPrice < 1
               ? 8
               : 4
           ),
@@ -960,15 +1113,10 @@ export async function GET(
           ),
       },
 
-      /*
-       * Aliases for newer code.
-       */
-
       markPrice:
         round(
           markPrice,
-          markPrice <
-            1
+          markPrice < 1
             ? 8
             : 4
         ),
@@ -976,8 +1124,7 @@ export async function GET(
       indexPrice:
         round(
           indexPrice,
-          indexPrice <
-            1
+          indexPrice < 1
             ? 8
             : 4
         ),
@@ -988,14 +1135,16 @@ export async function GET(
           4
         ),
 
-      /*
-       * Open interest
-       */
-
       openInterest: {
         contracts:
           round(
             openInterestContracts,
+            4
+          ),
+
+        baseCurrency:
+          round(
+            openInterestBase,
             4
           ),
 
@@ -1004,12 +1153,6 @@ export async function GET(
             openInterestNotional,
             2
           ),
-
-        /*
-         * Both names are
-         * intentionally returned
-         * for compatibility.
-         */
 
         changeApprox1hPercent:
           round(
@@ -1024,16 +1167,11 @@ export async function GET(
           ),
       },
 
-      /*
-       * Order book
-       */
-
       orderBook: {
         bestBid:
           round(
             bestBid,
-            bestBid <
-              1
+            bestBid < 1
               ? 8
               : 4
           ),
@@ -1041,8 +1179,7 @@ export async function GET(
         bestAsk:
           round(
             bestAsk,
-            bestAsk <
-              1
+            bestAsk < 1
               ? 8
               : 4
           ),
@@ -1078,10 +1215,6 @@ export async function GET(
           ),
       },
 
-      /*
-       * Aggressive order flow
-       */
-
       takerFlow: {
         buySellRatio:
           round(
@@ -1100,11 +1233,22 @@ export async function GET(
             takerSellVolume,
             4
           ),
-      },
 
-      /*
-       * Trader positioning
-       */
+        buyNotionalUsd:
+          round(
+            tradeFlow.buyNotional,
+            2
+          ),
+
+        sellNotionalUsd:
+          round(
+            tradeFlow.sellNotional,
+            2
+          ),
+
+        tradesAnalyzed:
+          trades.length,
+      },
 
       positioning: {
         longShortRatio:
@@ -1112,10 +1256,6 @@ export async function GET(
             longShortRatio,
             3
           ),
-
-        /*
-         * Old field names
-         */
 
         longAccountsPercent:
           round(
@@ -1129,10 +1269,6 @@ export async function GET(
             2
           ),
 
-        /*
-         * New aliases
-         */
-
         longAccountPercent:
           round(
             longAccountsPercent,
@@ -1144,11 +1280,12 @@ export async function GET(
             shortAccountsPercent,
             2
           ),
-      },
 
-      /*
-       * Reason arrays
-       */
+        available: false,
+
+        note:
+          "Global long/short account positioning is not inferred from unavailable data.",
+      },
 
       bullishReasons,
 
@@ -1161,7 +1298,23 @@ export async function GET(
 
       dataAvailability: {
         premiumIndex:
+          Boolean(
+            markData &&
+            indexData
+          ),
+
+        markPrice:
           true,
+
+        indexPrice:
+          Boolean(
+            indexData
+          ),
+
+        funding:
+          Boolean(
+            fundingData
+          ),
 
         openInterest:
           true,
@@ -1170,31 +1323,42 @@ export async function GET(
           true,
 
         openInterestHistory:
-          Boolean(
-            openInterestHistory
-          ),
+          false,
 
         takerFlow:
-          Boolean(
-            takerHistory
-          ),
+          trades.length > 0,
 
         positioning:
-          Boolean(
-            positioningHistory
-          ),
+          false,
+      },
+
+      contract: {
+        instId:
+          okxSymbol,
+
+        ctVal:
+          contractValue,
+
+        ctMult:
+          contractMultiplier,
+
+        ctValCcy:
+          instrument.ctValCcy ??
+          "",
+
+        settleCcy:
+          instrument.settleCcy ??
+          "",
       },
 
       source:
-        "Binance USD-M Futures",
+        "OKX USDT Perpetual Swap",
 
       updatedAt:
         new Date()
           .toISOString(),
     });
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       "Derivatives analysis error:",
       error
@@ -1202,17 +1366,18 @@ export async function GET(
 
     return NextResponse.json(
       {
-        success:
-          false,
+        success: false,
 
         error:
           error instanceof Error
             ? error.message
             : "Unable to calculate derivatives analysis.",
+
+        source:
+          "OKX USDT Perpetual Swap",
       },
       {
-        status:
-          500,
+        status: 500,
       }
     );
   }

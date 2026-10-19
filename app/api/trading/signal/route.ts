@@ -2566,6 +2566,10 @@ export async function GET(
     const warnings:
       string[] = [];
 
+    const netStablecoinLiquidity =
+      stablecoinLiquidity
+        .netExchangeLiquidityUsd;
+
     let conflict =
       false;
 
@@ -2689,14 +2693,6 @@ export async function GET(
     ) {
       combinedScore +=
         1;
-
-      confirmationReasons.push(
-        `Stablecoin exchange liquidity is positive by approximately $${Math.round(
-          stablecoinLiquidity.netExchangeLiquidityUsd
-        ).toLocaleString(
-          "en-US"
-        )}.`
-      );
     }
 
     if (
@@ -2706,15 +2702,76 @@ export async function GET(
     ) {
       combinedScore -=
         1;
+    }
 
+    /*
+     * Net dollar flow and weighted
+     * stablecoin score are separate
+     * measurements.
+     *
+     * Use the actual net dollar
+     * flow sign for descriptive
+     * liquidity text.
+     */
+
+    if (
+      stablecoinLiquidity.available &&
+      netStablecoinLiquidity >
+        0
+    ) {
       confirmationReasons.push(
-        `Stablecoin exchange liquidity is negative by approximately $${Math.abs(
+        `Net stablecoin exchange liquidity increased by approximately $${Math.round(
+          netStablecoinLiquidity
+        ).toLocaleString(
+          "en-US"
+        )}.`
+      );
+    }
+
+    if (
+      stablecoinLiquidity.available &&
+      netStablecoinLiquidity <
+        0
+    ) {
+      confirmationReasons.push(
+        `Net stablecoin exchange liquidity decreased by approximately $${Math.abs(
           Math.round(
-            stablecoinLiquidity.netExchangeLiquidityUsd
+            netStablecoinLiquidity
           )
         ).toLocaleString(
           "en-US"
         )}.`
+      );
+    }
+
+    /*
+     * A weighted event score can
+     * disagree with raw net dollar
+     * flow because transfer sizes
+     * and wallet-attribution
+     * confidence are scored
+     * separately.
+     */
+
+    if (
+      stablecoinEnabled &&
+      (
+        (
+          stablecoinLiquidity.bias ===
+            "BULLISH" &&
+          netStablecoinLiquidity <
+            0
+        ) ||
+        (
+          stablecoinLiquidity.bias ===
+            "BEARISH" &&
+          netStablecoinLiquidity >
+            0
+        )
+      )
+    ) {
+      warnings.push(
+        "Weighted stablecoin flow score and raw net exchange liquidity point in opposite directions, so stablecoin evidence is mixed."
       );
     }
 
@@ -3078,7 +3135,7 @@ export async function GET(
         "BULLISH"
     ) {
       bullishReasons.push(
-        "Recent USDT/USDC exchange flows show positive deployable exchange liquidity."
+        "Weighted USDT/USDC exchange-flow scoring currently leans bullish."
       );
     }
 
@@ -3088,7 +3145,7 @@ export async function GET(
         "BEARISH"
     ) {
       bearishReasons.push(
-        "Recent USDT/USDC exchange flows show stablecoin liquidity leaving exchanges."
+        "Weighted USDT/USDC exchange-flow scoring currently leans bearish."
       );
     }
 

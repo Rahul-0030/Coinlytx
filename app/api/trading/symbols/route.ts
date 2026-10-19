@@ -8,6 +8,14 @@ export const dynamic = "force-dynamic";
 const SPOT_BASE =
   "https://data-api.binance.vision";
 
+const OKX_BASE =
+  "https://openapi.okx.com";
+
+/*
+ * Assets we do not want the
+ * trading engine to treat as
+ * directional crypto markets.
+ */
 const EXCLUDED_BASE_ASSETS =
   new Set([
     "USDT",
@@ -17,6 +25,15 @@ const EXCLUDED_BASE_ASSETS =
     "USDP",
     "DAI",
     "BUSD",
+    "USD1",
+    "RLUSD",
+    "PYUSD",
+    "USDE",
+    "USDS",
+    "GUSD",
+    "FRAX",
+    "LUSD",
+    "EURC",
   ]);
 
 type SpotExchangeInfo = {
@@ -41,13 +58,50 @@ type SpotTicker = {
   volume: string;
 };
 
+type OkxInstrument = {
+  instType?: string;
+
+  instId?: string;
+
+  instFamily?: string;
+
+  uly?: string;
+
+  settleCcy?: string;
+
+  ctValCcy?: string;
+
+  state?: string;
+
+  ruleType?: string;
+
+  instCategory?: string;
+};
+
+type OkxResponse<T> = {
+  code: string;
+
+  msg: string;
+
+  data: T[];
+};
+
 type MarketItem = {
   symbol: string;
+
   baseAsset: string;
+
   price: number;
+
   change24h: number;
+
   quoteVolume24h: number;
+
   volume24h: number;
+
+  derivativesProvider: "OKX";
+
+  derivativesSymbol: string;
 };
 
 async function fetchJson<T>(
@@ -58,6 +112,11 @@ async function fetchJson<T>(
       url,
       {
         cache: "no-store",
+
+        headers: {
+          Accept:
+            "application/json",
+        },
 
         signal:
           AbortSignal.timeout(
@@ -75,7 +134,7 @@ async function fetchJson<T>(
         );
 
     throw new Error(
-      `Binance Spot request failed: ${
+      `Request failed: ${
         response.status
       }${
         body
@@ -93,6 +152,26 @@ async function fetchJson<T>(
   ) as T;
 }
 
+async function fetchOkxInstruments() {
+  const response =
+    await fetchJson<
+      OkxResponse<OkxInstrument>
+    >(
+      `${OKX_BASE}/api/v5/public/instruments?instType=SWAP`
+    );
+
+  if (
+    response.code !== "0"
+  ) {
+    throw new Error(
+      response.msg ||
+        `OKX instruments request failed with code ${response.code}.`
+    );
+  }
+
+  return response.data;
+}
+
 function safeNumber(
   value: unknown
 ) {
@@ -106,11 +185,43 @@ function safeNumber(
     : 0;
 }
 
+function getBaseFromOkxSwap(
+  instId: string
+) {
+  const suffix =
+    "-USDT-SWAP";
+
+  if (
+    !instId.endsWith(
+      suffix
+    )
+  ) {
+    return null;
+  }
+
+  const base =
+    instId.slice(
+      0,
+      -suffix.length
+    );
+
+  return base || null;
+}
+
 export async function GET() {
   try {
+    /*
+     * Load Binance Spot market
+     * information, Binance 24h
+     * tickers and all OKX
+     * perpetual instruments in
+     * parallel.
+     */
+
     const [
       spotInfo,
       spotTickers,
+      okxInstruments,
     ] =
       await Promise.all([
         fetchJson<SpotExchangeInfo>(
@@ -120,7 +231,106 @@ export async function GET() {
         fetchJson<SpotTicker[]>(
           `${SPOT_BASE}/api/v3/ticker/24hr`
         ),
+
+        fetchOkxInstruments(),
       ]);
+
+    /*
+     * Build the set of live
+     * OKX crypto USDT perpetual
+     * contracts.
+     *
+     * Example:
+     *
+     * BTC-USDT-SWAP
+     * ETH-USDT-SWAP
+     * SOL-USDT-SWAP
+     */
+
+    const okxSwapMap =
+      new Map<
+        string,
+        string
+      >();
+
+    for (
+      const instrument of
+      okxInstruments
+    ) {
+      const instId =
+        instrument.instId ??
+        "";
+
+      const baseAsset =
+        getBaseFromOkxSwap(
+          instId
+        );
+
+      if (!baseAsset) {
+        continue;
+      }
+
+      /*
+       * Only currently tradable
+       * perpetuals.
+       */
+
+      if (
+        instrument.state !==
+        "live"
+      ) {
+        continue;
+      }
+
+      /*
+       * USDT-settled contracts
+       * only.
+       */
+
+      if (
+        instrument.settleCcy &&
+        instrument.settleCcy !==
+          "USDT"
+      ) {
+        continue;
+      }
+
+      /*
+       * OKX currently identifies
+       * ordinary crypto assets
+       * with instCategory "1".
+       *
+       * If the field is absent,
+       * retain compatibility with
+       * older API responses.
+       */
+
+      if (
+        instrument.instCategory &&
+        instrument.instCategory !==
+          "1"
+      ) {
+        continue;
+      }
+
+      /*
+       * Avoid known non-directional
+       * dollar/stablecoin bases.
+       */
+
+      if (
+        EXCLUDED_BASE_ASSETS.has(
+          baseAsset
+        )
+      ) {
+        continue;
+      }
+
+      okxSwapMap.set(
+        baseAsset,
+        instId
+      );
+    }
 
     /*
      * Find active Binance Spot
@@ -146,8 +356,31 @@ export async function GET() {
           "TRADING" ||
         item
           .isSpotTradingAllowed ===
-          false ||
+          false
+      ) {
+        continue;
+      }
+
+      if (
         EXCLUDED_BASE_ASSETS.has(
+          item.baseAsset
+        )
+      ) {
+        continue;
+      }
+
+      /*
+       * This is the key safety
+       * filter:
+       *
+       * if there is no live OKX
+       * USDT perpetual for the
+       * same base asset, it cannot
+       * enter our trading universe.
+       */
+
+      if (
+        !okxSwapMap.has(
           item.baseAsset
         )
       ) {
@@ -164,8 +397,7 @@ export async function GET() {
     }
 
     /*
-     * Build ticker map using the
-     * Binance Spot 24h market data.
+     * Binance Spot ticker map.
      */
 
     const tickerMap =
@@ -208,9 +440,26 @@ export async function GET() {
           ticker.quoteVolume
         );
 
+      const volume =
+        safeNumber(
+          ticker.volume
+        );
+
       if (
         price <= 0 ||
-        quoteVolume <= 0
+        quoteVolume <= 0 ||
+        volume <= 0
+      ) {
+        continue;
+      }
+
+      const derivativesSymbol =
+        okxSwapMap.get(
+          info.baseAsset
+        );
+
+      if (
+        !derivativesSymbol
       ) {
         continue;
       }
@@ -233,15 +482,19 @@ export async function GET() {
           quoteVolume,
 
         volume24h:
-          safeNumber(
-            ticker.volume
-          ),
+          volume,
+
+        derivativesProvider:
+          "OKX",
+
+        derivativesSymbol,
       });
     }
 
     /*
-     * Highest 24-hour USDT
-     * trading volume first.
+     * Rank compatible markets
+     * using Binance Spot 24-hour
+     * USDT quote volume.
      */
 
     markets.sort(
@@ -249,6 +502,19 @@ export async function GET() {
         b.quoteVolume24h -
         a.quoteVolume24h
     );
+
+    /*
+     * Important:
+     *
+     * We filter for OKX support
+     * BEFORE taking the first 50.
+     *
+     * Therefore we still return
+     * up to 50 usable coins,
+     * rather than selecting
+     * Binance Top 50 first and
+     * losing unsupported assets.
+     */
 
     const top50 =
       markets.slice(
@@ -265,6 +531,14 @@ export async function GET() {
       symbols:
         top50,
 
+      universe: {
+        compatibleMarkets:
+          markets.length,
+
+        okxLiveUsdtSwaps:
+          okxSwapMap.size,
+      },
+
       methodology: {
         quoteAsset:
           "USDT",
@@ -272,14 +546,23 @@ export async function GET() {
         spotRequired:
           true,
 
-        futuresRequired:
-          false,
+        derivativesRequired:
+          true,
+
+        spotProvider:
+          "Binance Spot",
+
+        derivativesProvider:
+          "OKX USDT Perpetual Swap",
 
         ranking:
-          "24h spot quote volume",
+          "24h Binance Spot USDT quote volume",
 
-        source:
-          "Binance Spot public market-data endpoint",
+        filtering:
+          "Active Binance Spot USDT market + live OKX crypto USDT perpetual",
+
+        stablecoinsExcluded:
+          true,
 
         limit:
           50,
