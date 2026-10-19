@@ -9,7 +9,18 @@ const BATCH_SIZE = 10;
 const TOTAL_BATCHES = 5;
 const CONCURRENCY = 2;
 
-const ACTIVE_STATUSES = ["OPEN", "TP1_HIT", "TP2_HIT"];
+/*
+ * A generated 1h signal is allowed up to two hours
+ * to reach its suggested entry zone.
+ */
+const ENTRY_VALIDITY_MINUTES = 120;
+
+const ACTIVE_STATUSES = [
+  "PENDING_ENTRY",
+  "OPEN",
+  "TP1_HIT",
+  "TP2_HIT",
+];
 
 type Market = {
   symbol: string;
@@ -172,19 +183,45 @@ async function fetchJson<T>(url: string, timeoutMs = 45_000): Promise<T> {
 
 function hasValidTradePlan(data: FinalResponse) {
   const plan = data.tradePlan;
+  const decision = data.finalDecision;
 
-  if (!plan) {
+  if (!plan || (decision !== "LONG" && decision !== "SHORT")) {
     return false;
   }
 
-  return [
-    plan.entryLow,
-    plan.entryHigh,
-    plan.stopLoss,
-    plan.tp1,
-    plan.tp2,
-    plan.tp3,
-  ].every((value) => safeNumber(value) !== null);
+  const entryLow = safeNumber(plan.entryLow);
+  const entryHigh = safeNumber(plan.entryHigh);
+  const stopLoss = safeNumber(plan.stopLoss);
+  const tp1 = safeNumber(plan.tp1);
+  const tp2 = safeNumber(plan.tp2);
+  const tp3 = safeNumber(plan.tp3);
+
+  const levels = [entryLow, entryHigh, stopLoss, tp1, tp2, tp3];
+
+  // Zero/negative levels are never valid market prices.
+  if (levels.some((value) => value === null || value <= 0)) {
+    return false;
+  }
+
+  if (entryLow! > entryHigh!) {
+    return false;
+  }
+
+  if (decision === "LONG") {
+    return (
+      stopLoss! < entryLow! &&
+      tp1! > entryHigh! &&
+      tp2! >= tp1! &&
+      tp3! >= tp2!
+    );
+  }
+
+  return (
+    stopLoss! > entryHigh! &&
+    tp1! < entryLow! &&
+    tp2! <= tp1! &&
+    tp3! <= tp2!
+  );
 }
 
 async function mapWithConcurrency<T, R>(
@@ -321,7 +358,12 @@ async function processSymbol(origin: string, symbol: string) {
   const decisionScore = safeNumber(final.decisionScore);
   const confidence = safeNumber(final.confidence);
 
-  if (currentPrice === null || decisionScore === null || confidence === null) {
+  if (
+    currentPrice === null ||
+    currentPrice <= 0 ||
+    decisionScore === null ||
+    confidence === null
+  ) {
     return {
       symbol,
       action: "SKIPPED",
@@ -365,6 +407,13 @@ async function processSymbol(origin: string, symbol: string) {
       ? final.updatedAt
       : new Date().toISOString();
 
+  const createdAt = new Date();
+  const entryExpiresAt =
+    new Date(
+      createdAt.getTime() +
+        ENTRY_VALIDITY_MINUTES * 60_000
+    ).toISOString();
+
   const payload = {
     symbol,
     interval: SCAN_INTERVAL,
@@ -380,7 +429,18 @@ async function processSymbol(origin: string, symbol: string) {
     tp3: safeNumber(plan.tp3),
     invalidation: safeNumber(plan.invalidation),
     risk_reward: plan.riskReward ?? null,
-    status: "OPEN",
+
+    /*
+     * Do not assume an immediate fill.
+     * The paper-trade tracker will move this trade to OPEN
+     * only after a post-signal 1-minute candle touches
+     * the suggested entry zone.
+     */
+    status: "PENDING_ENTRY",
+    entry_filled_at: null,
+    entry_price: null,
+    entry_expires_at: entryExpiresAt,
+
     selected_signal_score: selectedSignalScore,
     multi_timeframe_score: multiTimeframeScore,
     multi_timeframe_alignment: final.multiTimeframe?.alignment ?? null,
@@ -401,10 +461,13 @@ async function processSymbol(origin: string, symbol: string) {
       ...final,
       _paperTrading: {
         createdBy: "automatic-top50-scanner",
-        scannerVersion: "v1",
+        scannerVersion: "v3-pending-entry-validation",
         scanInterval: SCAN_INTERVAL,
         batchSize: BATCH_SIZE,
-        createdAt: new Date().toISOString(),
+        createdAt: createdAt.toISOString(),
+        entryValidityMinutes: ENTRY_VALIDITY_MINUTES,
+        fillPolicy:
+          "Signal starts as PENDING_ENTRY and becomes OPEN only when a post-signal 1-minute candle touches the entry zone.",
         confidenceMeaning:
           "Heuristic model score, not calibrated win probability.",
       },
@@ -414,7 +477,9 @@ async function processSymbol(origin: string, symbol: string) {
   const { data: inserted, error: insertError } = await supabase
     .from("paper_trades")
     .insert(payload)
-    .select("id,symbol,interval,signal,status,opened_at")
+    .select(
+      "id,symbol,interval,signal,status,opened_at,entry_low,entry_high,entry_expires_at"
+    )
     .single();
 
   if (insertError) {
@@ -428,6 +493,8 @@ async function processSymbol(origin: string, symbol: string) {
     finalDecision: decision,
     decisionScore,
     confidence,
+    entryValidityMinutes:
+      ENTRY_VALIDITY_MINUTES,
   };
 }
 
@@ -483,7 +550,7 @@ async function runScanner(request: NextRequest) {
 
   return {
     success: true,
-    scannerVersion: "v1",
+    scannerVersion: "v3-pending-entry-validation",
     interval: SCAN_INTERVAL,
     batch: {
       index: batchIndex,
@@ -503,6 +570,9 @@ async function runScanner(request: NextRequest) {
       waitSignalsSkipped: true,
       strongConflictSkipped: true,
       activeTradeDeduplication: true,
+      pendingEntryDeduplication: true,
+      entryFillRequired: true,
+      entryValidityMinutes: ENTRY_VALIDITY_MINUTES,
       postCloseCooldownMinutes: cooldownMinutes(SCAN_INTERVAL),
       concurrency: CONCURRENCY,
       liveOrderExecution: false,
