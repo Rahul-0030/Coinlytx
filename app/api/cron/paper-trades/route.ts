@@ -7,6 +7,16 @@ export const dynamic = "force-dynamic";
 const BINANCE_BASE = "https://data-api.binance.vision";
 const VALID_INTERVALS = new Set(["1m", "5m", "15m", "1h", "4h", "1d"]);
 
+/*
+ * Paper-trade execution is always evaluated with 1-minute candles,
+ * regardless of the strategy timeframe that created the signal.
+ *
+ * This prevents a 1h/4h candle from including price action that happened
+ * before the paper trade existed.
+ */
+const EXECUTION_INTERVAL = "1m";
+const EXECUTION_INTERVAL_MS = 60_000;
+
 type Trade = {
   id: string;
   symbol: string;
@@ -42,18 +52,6 @@ function round(value: number, decimals = 4) {
   return Math.round(value * factor) / factor;
 }
 
-function intervalMs(interval: string) {
-  const map: Record<string, number> = {
-    "1m": 60_000,
-    "5m": 300_000,
-    "15m": 900_000,
-    "1h": 3_600_000,
-    "4h": 14_400_000,
-    "1d": 86_400_000,
-  };
-
-  return map[interval] ?? 3_600_000;
-}
 
 function getAdminSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -93,17 +91,31 @@ function isAuthorized(request: NextRequest) {
 
 async function fetchCandles(
   symbol: string,
-  interval: string,
   startTime: number
 ): Promise<Candle[]> {
   const output: Candle[] = [];
   const now = Date.now();
-  let cursor = Math.max(0, startTime - intervalMs(interval));
+
+  /*
+   * Start only from the first COMPLETE 1-minute candle whose open time is
+   * at or after the trade creation time.
+   *
+   * Example:
+   * trade opened 17:42:18
+   * first evaluated candle 17:43:00-17:43:59
+   *
+   * We intentionally ignore the partial 17:42 candle because its OHLC
+   * contains price action from before 17:42:18 and cannot be separated
+   * using standard OHLC data.
+   */
+  let cursor =
+    Math.ceil(startTime / EXECUTION_INTERVAL_MS) *
+    EXECUTION_INTERVAL_MS;
 
   for (let page = 0; page < 20 && cursor <= now; page += 1) {
     const url = new URL(`${BINANCE_BASE}/api/v3/klines`);
     url.searchParams.set("symbol", symbol);
-    url.searchParams.set("interval", interval);
+    url.searchParams.set("interval", EXECUTION_INTERVAL);
     url.searchParams.set("startTime", String(cursor));
     url.searchParams.set("limit", "1000");
 
@@ -113,7 +125,9 @@ async function fetchCandles(
     });
 
     if (!response.ok) {
-      throw new Error(`Binance candles failed for ${symbol}: HTTP ${response.status}`);
+      throw new Error(
+        `Binance 1m execution candles failed for ${symbol}: HTTP ${response.status}`
+      );
     }
 
     const rows = (await response.json()) as unknown[][];
@@ -136,7 +150,8 @@ async function fetchCandles(
         Number.isFinite(candle.high) &&
         Number.isFinite(candle.low) &&
         Number.isFinite(candle.close) &&
-        Number.isFinite(candle.closeTime)
+        Number.isFinite(candle.closeTime) &&
+        candle.openTime >= cursor
       ) {
         output.push(candle);
       }
@@ -148,7 +163,7 @@ async function fetchCandles(
       break;
     }
 
-    const nextCursor = last.openTime + intervalMs(interval);
+    const nextCursor = last.openTime + EXECUTION_INTERVAL_MS;
 
     if (nextCursor <= cursor) {
       break;
@@ -195,7 +210,18 @@ function evaluateTrade(trade: Trade, candles: Candle[]) {
 
   const entry = (entryLow + entryHigh) / 2;
   const openedAt = new Date(trade.opened_at).getTime();
-  const relevantCandles = candles.filter((candle) => candle.closeTime >= openedAt);
+
+  if (!Number.isFinite(openedAt)) {
+    throw new Error("Trade opened_at is invalid.");
+  }
+
+  const trackingStart =
+    Math.ceil(openedAt / EXECUTION_INTERVAL_MS) *
+    EXECUTION_INTERVAL_MS;
+
+  const relevantCandles = candles.filter(
+    (candle) => candle.openTime >= trackingStart
+  );
 
   let status = trade.status;
   let highestTarget = status === "TP2_HIT" ? 2 : status === "TP1_HIT" ? 1 : 0;
@@ -279,6 +305,8 @@ function evaluateTrade(trade: Trade, candles: Candle[]) {
     ambiguous,
     candlesChecked: relevantCandles.length,
     lastPrice: relevantCandles.at(-1)?.close ?? null,
+    trackingStart: new Date(trackingStart).toISOString(),
+    executionInterval: EXECUTION_INTERVAL,
   };
 }
 
@@ -306,10 +334,15 @@ async function runTracker() {
         throw new Error(`Unsupported interval: ${trade.interval}`);
       }
 
+      const openedAt = new Date(trade.opened_at).getTime();
+
+      if (!Number.isFinite(openedAt)) {
+        throw new Error("Trade opened_at is invalid.");
+      }
+
       const marketCandles = await fetchCandles(
         trade.symbol,
-        trade.interval,
-        new Date(trade.opened_at).getTime()
+        openedAt
       );
 
       const result = evaluateTrade(trade, marketCandles);
@@ -364,6 +397,9 @@ async function runTracker() {
         pnlPercent: result.pnlPercent,
         maxFavorableExcursionPercent: result.maxFavorable,
         maxAdverseExcursionPercent: result.maxAdverse,
+        strategyInterval: trade.interval,
+        executionInterval: result.executionInterval,
+        trackingStart: result.trackingStart,
         candlesChecked: result.candlesChecked,
         lastPrice: result.lastPrice,
         ambiguousIntrabarOutcome: result.ambiguous,
@@ -390,7 +426,7 @@ async function runTracker() {
     ).length,
     results,
     methodology:
-      "Binance spot candle high/low is checked from opened_at onward. TP3 or stop closes the trade. TP1/TP2 keep it active. Same-candle TP/SL ambiguity uses the conservative stop-first assumption.",
+      "Paper-trade execution is evaluated with Binance Spot 1-minute candles, independent of the strategy timeframe. Tracking begins at the first full 1-minute candle at or after opened_at, so OHLC price action from before the signal cannot contaminate results. The partial opening minute is intentionally skipped. TP3 or stop closes the trade; TP1/TP2 keep it active. Same-1m-candle TP/SL ambiguity uses the conservative stop-first assumption.",
     updatedAt: new Date().toISOString(),
   };
 }
