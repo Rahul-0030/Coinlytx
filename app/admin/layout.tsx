@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
+import "./admin.css";
 
 export default function AdminLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <div className="coinlytx-admin-light">
+      {children}
+    </div>
+  );
 }

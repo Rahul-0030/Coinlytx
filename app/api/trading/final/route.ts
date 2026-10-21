@@ -33,8 +33,7 @@ type SignalResponse = {
   symbol: string;
   interval: string;
 
-  finalSignal:
-    TradeSignal;
+  finalSignal: TradeSignal;
 
   combinedScore: number;
   confidence: number;
@@ -77,10 +76,12 @@ type SignalResponse = {
 
   whaleIntelligence: {
     supportedForSymbol: boolean;
+
     source:
       | "ETH_NATIVE"
       | "ERC20"
       | "NONE";
+
     meaningfulFlow: boolean;
 
     bias:
@@ -103,6 +104,7 @@ type SignalResponse = {
 
     observedEvents: number;
     directionalEvents: number;
+
     classificationCoveragePercent: number;
   };
 
@@ -124,17 +126,14 @@ type SignalResponse = {
     directionalEvents: number;
 
     classifiedEvents: number;
-
     unclassifiedEvents: number;
 
     classificationCoveragePercent: number;
 
     exchangeInflows: number;
-
     exchangeOutflows: number;
 
     exchangeInflowUsd: number;
-
     exchangeOutflowUsd: number;
 
     netExchangeLiquidityUsd: number;
@@ -144,6 +143,7 @@ type SignalResponse = {
 
   catalystIntelligence: {
     available: boolean;
+
     meaningfulCatalyst: boolean;
 
     bias:
@@ -184,9 +184,9 @@ type SignalResponse = {
     risks: string[];
   };
 
-
   macroIntelligence: {
     available: boolean;
+
     meaningfulRegime: boolean;
 
     regime:
@@ -298,7 +298,6 @@ type MultiTimeframeItem = {
   success: boolean;
 
   signal?: TradeSignal;
-
   score?: number;
 
   confidence?: number;
@@ -308,7 +307,6 @@ type MultiTimeframeItem = {
   rsi?: number;
 
   support?: number;
-
   resistance?: number;
 
   atr?: number;
@@ -323,8 +321,7 @@ type MultiTimeframeResponse = {
 
   symbol: string;
 
-  consensusSignal:
-    TradeSignal;
+  consensusSignal: TradeSignal;
 
   weightedScore: number;
 
@@ -367,8 +364,7 @@ type MultiTimeframeResponse = {
     neutralWeight: number;
   };
 
-  timeframes:
-    MultiTimeframeItem[];
+  timeframes: MultiTimeframeItem[];
 
   warnings: string[];
 
@@ -555,8 +551,7 @@ export async function GET(
     }
 
     /*
-     * Prevent hidden symbol
-     * fallback.
+     * Prevent hidden symbol fallback.
      */
 
     if (
@@ -578,10 +573,7 @@ export async function GET(
     }
 
     /*
-     * Defensive normalization.
-     * If a dev server briefly serves an older signal response during
-     * hot reload, the final route must not crash while reading
-     * .available from a missing intelligence object.
+     * Defensive intelligence fallbacks.
      */
 
     const stablecoinLiquidity =
@@ -660,20 +652,17 @@ export async function GET(
       };
 
     /*
-     * Final decision engine:
+     * =========================================================
+     * FINAL DECISION ENGINE V2
+     * =========================================================
      *
-     * Selected intelligence:
-     * 80%
+     * Selected signal: 80%
+     * Multi-timeframe: 20%
      *
-     * Multi-timeframe:
-     * 20%
+     * Stablecoin, catalyst and macro are already represented
+     * inside selectedSignal.combinedScore.
      *
-     * Stablecoin, catalyst and macro
-     * intelligence are already
-     * included inside selectedSignal
-     * with controlled internal
-     * weights. Do not add them
-     * again here.
+     * Do not double-count them here.
      */
 
     const selectedSignalWeight =
@@ -707,8 +696,7 @@ export async function GET(
       false;
 
     /*
-     * Primary signal +
-     * MTF agreement.
+     * Selected signal + MTF consensus agreement.
      */
 
     if (
@@ -717,8 +705,7 @@ export async function GET(
       multiTimeframe.consensusSignal ===
         "LONG"
     ) {
-      decisionScore +=
-        5;
+      decisionScore += 5;
 
       confirmations.push(
         `${interval} signal and multi-timeframe consensus are both LONG.`
@@ -731,8 +718,7 @@ export async function GET(
       multiTimeframe.consensusSignal ===
         "SHORT"
     ) {
-      decisionScore -=
-        5;
+      decisionScore -= 5;
 
       confirmations.push(
         `${interval} signal and multi-timeframe consensus are both SHORT.`
@@ -747,8 +733,7 @@ export async function GET(
       multiTimeframe.alignment ===
       "STRONG_BULLISH"
     ) {
-      decisionScore +=
-        4;
+      decisionScore += 4;
 
       confirmations.push(
         "Weighted multi-timeframe structure is strongly bullish."
@@ -759,8 +744,7 @@ export async function GET(
       multiTimeframe.alignment ===
       "STRONG_BEARISH"
     ) {
-      decisionScore -=
-        4;
+      decisionScore -= 4;
 
       confirmations.push(
         "Weighted multi-timeframe structure is strongly bearish."
@@ -778,8 +762,7 @@ export async function GET(
         .averageScore;
 
     /*
-     * Higher-timeframe
-     * conflict protection.
+     * Strong higher-timeframe conflict.
      */
 
     if (
@@ -787,8 +770,7 @@ export async function GET(
         "LONG" &&
       higherTrend ===
         "BEARISH" &&
-      higherScore <=
-        -30
+      higherScore <= -30
     ) {
       strongConflict =
         true;
@@ -803,8 +785,7 @@ export async function GET(
         "SHORT" &&
       higherTrend ===
         "BULLISH" &&
-      higherScore >=
-        30
+      higherScore >= 30
     ) {
       strongConflict =
         true;
@@ -840,37 +821,133 @@ export async function GET(
         100
       );
 
+    /*
+     * =========================================================
+     * INDEPENDENT CONFIRMATION GATE
+     * =========================================================
+     *
+     * A score by itself is no longer sufficient.
+     */
+
+    const longSelectedConfirmation =
+      selectedSignal.finalSignal ===
+      "LONG";
+
+    const shortSelectedConfirmation =
+      selectedSignal.finalSignal ===
+      "SHORT";
+
+    const longMtfConfirmation =
+      multiTimeframe.consensusSignal ===
+        "LONG" ||
+      multiTimeframe.alignment ===
+        "BULLISH" ||
+      multiTimeframe.alignment ===
+        "STRONG_BULLISH";
+
+    const shortMtfConfirmation =
+      multiTimeframe.consensusSignal ===
+        "SHORT" ||
+      multiTimeframe.alignment ===
+        "BEARISH" ||
+      multiTimeframe.alignment ===
+        "STRONG_BEARISH";
+
+    const longHigherTimeframeConfirmation =
+      higherTrend ===
+        "BULLISH" &&
+      higherScore > 0;
+
+    const shortHigherTimeframeConfirmation =
+      higherTrend ===
+        "BEARISH" &&
+      higherScore < 0;
+
+    const longConfirmationCount =
+      [
+        longSelectedConfirmation,
+        longMtfConfirmation,
+        longHigherTimeframeConfirmation,
+      ].filter(Boolean).length;
+
+    const shortConfirmationCount =
+      [
+        shortSelectedConfirmation,
+        shortMtfConfirmation,
+        shortHigherTimeframeConfirmation,
+      ].filter(Boolean).length;
+
+    /*
+     * =========================================================
+     * LONG / SHORT / WAIT
+     * =========================================================
+     *
+     * Requirements:
+     *
+     * 1. Score crosses ±30.
+     * 2. Selected timeframe agrees.
+     * 3. At least 2/3 directional confirmation layers agree.
+     * 4. No strong higher-timeframe conflict.
+     */
+
     let finalDecision:
       TradeSignal =
       "WAIT";
 
     if (
-      decisionScore >=
-        30 &&
-      !strongConflict
+      decisionScore >= 30 &&
+      !strongConflict &&
+      longSelectedConfirmation &&
+      longConfirmationCount >= 2
     ) {
       finalDecision =
         "LONG";
     } else if (
-      decisionScore <=
-        -30 &&
-      !strongConflict
+      decisionScore <= -30 &&
+      !strongConflict &&
+      shortSelectedConfirmation &&
+      shortConfirmationCount >= 2
     ) {
       finalDecision =
         "SHORT";
     }
 
     /*
-     * Never trade directly
-     * against a very strong
-     * higher timeframe.
+     * Explain rejected high-score setups.
+     */
+
+    if (
+      finalDecision === "WAIT" &&
+      decisionScore >= 30
+    ) {
+      warnings.push(
+        `Bullish score ${round(
+          decisionScore,
+          1
+        )} rejected because directional confirmation was insufficient (${longConfirmationCount}/3).`
+      );
+    }
+
+    if (
+      finalDecision === "WAIT" &&
+      decisionScore <= -30
+    ) {
+      warnings.push(
+        `Bearish score ${round(
+          decisionScore,
+          1
+        )} rejected because directional confirmation was insufficient (${shortConfirmationCount}/3).`
+      );
+    }
+
+    /*
+     * Hard higher-timeframe safety layer.
      */
 
     if (
       finalDecision ===
         "LONG" &&
-      higherScore <=
-        -35
+      higherScore <= -35
     ) {
       finalDecision =
         "WAIT";
@@ -886,8 +963,7 @@ export async function GET(
     if (
       finalDecision ===
         "SHORT" &&
-      higherScore >=
-        35
+      higherScore >= 35
     ) {
       finalDecision =
         "WAIT";
@@ -901,10 +977,11 @@ export async function GET(
     }
 
     /*
-     * Heuristic confidence.
+     * =========================================================
+     * HEURISTIC CONFIDENCE
+     * =========================================================
      *
-     * This is NOT a calibrated
-     * probability of winning.
+     * This is NOT calibrated win probability.
      */
 
     let confidence =
@@ -914,6 +991,10 @@ export async function GET(
       ) *
         0.4;
 
+    /*
+     * Selected timeframe + MTF consensus.
+     */
+
     if (
       finalDecision ===
         "LONG" &&
@@ -922,8 +1003,7 @@ export async function GET(
       multiTimeframe.consensusSignal ===
         "LONG"
     ) {
-      confidence +=
-        6;
+      confidence += 6;
     }
 
     if (
@@ -934,34 +1014,52 @@ export async function GET(
       multiTimeframe.consensusSignal ===
         "SHORT"
     ) {
-      confidence +=
-        6;
+      confidence += 6;
     }
+
+    /*
+     * Higher timeframe confirmation.
+     */
 
     if (
       finalDecision ===
         "LONG" &&
-      higherTrend ===
-        "BULLISH"
+      longHigherTimeframeConfirmation
     ) {
-      confidence +=
-        4;
+      confidence += 4;
     }
 
     if (
       finalDecision ===
         "SHORT" &&
-      higherTrend ===
-        "BEARISH"
+      shortHigherTimeframeConfirmation
     ) {
-      confidence +=
-        4;
+      confidence += 4;
     }
 
     /*
-     * Stablecoin alignment gets
-     * at most a tiny confidence
-     * adjustment.
+     * Full 3/3 confirmation bonus.
+     */
+
+    if (
+      finalDecision ===
+        "LONG" &&
+      longConfirmationCount === 3
+    ) {
+      confidence += 2;
+    }
+
+    if (
+      finalDecision ===
+        "SHORT" &&
+      shortConfirmationCount === 3
+    ) {
+      confidence += 2;
+    }
+
+    /*
+     * Stablecoin alignment:
+     * tiny confidence adjustment only.
      */
 
     if (
@@ -975,8 +1073,7 @@ export async function GET(
           .bias ===
           "BULLISH"
       ) {
-        confidence +=
-          1;
+        confidence += 1;
       }
 
       if (
@@ -986,31 +1083,36 @@ export async function GET(
           .bias ===
           "BEARISH"
       ) {
-        confidence +=
-          1;
+        confidence += 1;
       }
     }
+
+    /*
+     * Conflict penalties.
+     */
 
     if (
       multiTimeframe.trendConflict
     ) {
-      confidence -=
-        8;
+      confidence -= 8;
     }
 
     if (
       selectedSignal.conflict
     ) {
-      confidence -=
-        10;
+      confidence -= 10;
     }
 
     if (
       strongConflict
     ) {
-      confidence -=
-        15;
+      confidence -= 15;
     }
+
+    /*
+     * WAIT should never look like a
+     * high-confidence trade recommendation.
+     */
 
     if (
       finalDecision ===
@@ -1031,8 +1133,7 @@ export async function GET(
       );
 
     /*
-     * Human-readable MTF
-     * confirmations.
+     * Human-readable MTF confirmations.
      */
 
     if (
@@ -1082,8 +1183,7 @@ export async function GET(
     }
 
     /*
-     * Dashboard timeframe
-     * format.
+     * Dashboard timeframe format.
      */
 
     const timeframeSummary =
@@ -1125,9 +1225,7 @@ export async function GET(
       );
 
     /*
-     * Hide trade levels
-     * when final decision
-     * is WAIT.
+     * Hide trade levels when WAIT.
      */
 
     const tradePlan =
@@ -1165,6 +1263,9 @@ export async function GET(
       success:
         true,
 
+      version:
+        "final-v2-confirmation-gated",
+
       symbol,
 
       interval,
@@ -1191,6 +1292,49 @@ export async function GET(
       currentPrice:
         selectedSignal
           .currentPrice,
+
+      /*
+       * NEW:
+       * Makes the V2 gate visible to the dashboard
+       * and future performance analysis.
+       */
+
+      confirmationGate: {
+        required:
+          2,
+
+        longConfirmationCount,
+
+        shortConfirmationCount,
+
+        selectedTimeframe: {
+          long:
+            longSelectedConfirmation,
+
+          short:
+            shortSelectedConfirmation,
+        },
+
+        multiTimeframe: {
+          long:
+            longMtfConfirmation,
+
+          short:
+            shortMtfConfirmation,
+        },
+
+        higherTimeframe: {
+          long:
+            longHigherTimeframeConfirmation,
+
+          short:
+            shortHigherTimeframeConfirmation,
+        },
+
+        passed:
+          finalDecision !==
+          "WAIT",
+      },
 
       decisionWeights: {
         selectedSignal:
@@ -1223,8 +1367,7 @@ export async function GET(
       },
 
       /*
-       * Show internal selected
-       * signal weights.
+       * Internal selected-signal weights.
        */
 
       intelligenceWeights: {
@@ -1249,10 +1392,20 @@ export async function GET(
             .stablecoin,
 
         catalyst:
-          (selectedSignal.weights.catalyst ?? 0),
+          (
+            selectedSignal
+              .weights
+              .catalyst ??
+            0
+          ),
 
         macro:
-          (selectedSignal.weights.macro ?? 0),
+          (
+            selectedSignal
+              .weights
+              .macro ??
+            0
+          ),
       },
 
       intelligenceScores: {
@@ -1297,22 +1450,52 @@ export async function GET(
             .stablecoinContribution,
 
         catalyst:
-          (selectedSignal.scores.catalyst ?? 0),
+          (
+            selectedSignal
+              .scores
+              .catalyst ??
+            0
+          ),
 
         catalystRaw:
-          (selectedSignal.scores.catalystRaw ?? 0),
+          (
+            selectedSignal
+              .scores
+              .catalystRaw ??
+            0
+          ),
 
         catalystContribution:
-          (selectedSignal.scores.catalystContribution ?? 0),
+          (
+            selectedSignal
+              .scores
+              .catalystContribution ??
+            0
+          ),
 
         macro:
-          (selectedSignal.scores.macro ?? 0),
+          (
+            selectedSignal
+              .scores
+              .macro ??
+            0
+          ),
 
         macroRaw:
-          (selectedSignal.scores.macroRaw ?? 0),
+          (
+            selectedSignal
+              .scores
+              .macroRaw ??
+            0
+          ),
 
         macroContribution:
-          (selectedSignal.scores.macroContribution ?? 0),
+          (
+            selectedSignal
+              .scores
+              .macroContribution ??
+            0
+          ),
       },
 
       selectedTimeframe: {
@@ -1351,10 +1534,20 @@ export async function GET(
             .stablecoin,
 
         catalystScore:
-          (selectedSignal.scores.catalyst ?? 0),
+          (
+            selectedSignal
+              .scores
+              .catalyst ??
+            0
+          ),
 
         macroScore:
-          (selectedSignal.scores.macro ?? 0),
+          (
+            selectedSignal
+              .scores
+              .macro ??
+            0
+          ),
       },
 
       multiTimeframe: {
@@ -1418,10 +1611,6 @@ export async function GET(
       whaleIntelligence:
         selectedSignal
           .whaleIntelligence,
-
-      /*
-       * NEW
-       */
 
       stablecoinLiquidity:
         stablecoinLiquidity,
@@ -1512,16 +1701,24 @@ export async function GET(
             .available,
 
         catalystWeighted:
-          (selectedSignal.weights.catalyst ?? 0) >
-          0,
+          (
+            selectedSignal
+              .weights
+              .catalyst ??
+            0
+          ) > 0,
 
         macro:
           macroIntelligence
             .available,
 
         macroWeighted:
-          (selectedSignal.weights.macro ?? 0) >
-          0,
+          (
+            selectedSignal
+              .weights
+              .macro ??
+            0
+          ) > 0,
 
         macroCalendar:
           false,

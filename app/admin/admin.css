@@ -1,0 +1,227 @@
+/* =========================================================
+   COINLYTX ADMIN — GLOBAL LIGHT MODE
+   Applies only to /admin/*
+   Public Coinlytx website remains unchanged.
+========================================================= */
+
+.coinlytx-admin-light {
+  min-height: 100vh;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  color-scheme: light;
+}
+
+/* Main admin page */
+.coinlytx-admin-light main {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Common dark backgrounds used by existing admin pages */
+.coinlytx-admin-light [style*="#020617"],
+.coinlytx-admin-light [style*="#0f172a"],
+.coinlytx-admin-light [style*="#111827"],
+.coinlytx-admin-light [style*="#0b1220"],
+.coinlytx-admin-light [style*="#07111f"],
+.coinlytx-admin-light [style*="#101827"] {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Main content/card containers */
+.coinlytx-admin-light section,
+.coinlytx-admin-light article {
+  color: #0f172a !important;
+}
+
+/* Headings */
+.coinlytx-admin-light h1,
+.coinlytx-admin-light h2,
+.coinlytx-admin-light h3,
+.coinlytx-admin-light h4,
+.coinlytx-admin-light h5,
+.coinlytx-admin-light h6 {
+  color: #0f172a !important;
+}
+
+/* Standard text */
+.coinlytx-admin-light p {
+  color: #475569 !important;
+}
+
+/* Labels */
+.coinlytx-admin-light label {
+  color: #1e293b !important;
+}
+
+/* Inputs */
+.coinlytx-admin-light input,
+.coinlytx-admin-light textarea,
+.coinlytx-admin-light select {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+
+.coinlytx-admin-light input::placeholder,
+.coinlytx-admin-light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Focus state */
+.coinlytx-admin-light input:focus,
+.coinlytx-admin-light textarea:focus,
+.coinlytx-admin-light select:focus {
+  border-color: #2563eb !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+}
+
+/* Content editable editor */
+.coinlytx-admin-light [contenteditable="true"] {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Tables */
+.coinlytx-admin-light table {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+.coinlytx-admin-light th {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+.coinlytx-admin-light td {
+  background: #ffffff !important;
+  color: #334155 !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Generic dark borders */
+.coinlytx-admin-light [style*="#1e293b"],
+.coinlytx-admin-light [style*="#334155"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Dark text overrides */
+.coinlytx-admin-light [style*="color: rgb(248"],
+.coinlytx-admin-light [style*="color:#f8fafc"],
+.coinlytx-admin-light [style*="color: #f8fafc"],
+.coinlytx-admin-light [style*="color:#ffffff"],
+.coinlytx-admin-light [style*="color: #ffffff"] {
+  color: #0f172a !important;
+}
+
+/* Secondary muted text */
+.coinlytx-admin-light [style*="#94a3b8"] {
+  color: #64748b !important;
+}
+
+/* Links */
+.coinlytx-admin-light a {
+  color: #2563eb;
+}
+
+.coinlytx-admin-light a:hover {
+  color: #1d4ed8;
+}
+
+/* Buttons - keep primary buttons attractive */
+.coinlytx-admin-light button {
+  border-color: #cbd5e1;
+}
+
+/* Blue buttons remain blue */
+.coinlytx-admin-light button[style*="#2563eb"],
+.coinlytx-admin-light button[style*="rgb(37, 99, 235)"] {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+}
+
+/* Green buttons remain green */
+.coinlytx-admin-light button[style*="#16a34a"],
+.coinlytx-admin-light button[style*="#22c55e"],
+.coinlytx-admin-light button[style*="#059669"],
+.coinlytx-admin-light button[style*="#047857"] {
+  color: #ffffff !important;
+}
+
+/* Toolbar buttons */
+.coinlytx-admin-light [role="toolbar"] button {
+  background: #ffffff !important;
+  color: #1e293b !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.coinlytx-admin-light [role="toolbar"] button:hover {
+  background: #f1f5f9 !important;
+}
+
+/* Code / HTML editor */
+.coinlytx-admin-light pre,
+.coinlytx-admin-light code {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Scrollbars */
+.coinlytx-admin-light * {
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+.coinlytx-admin-light *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.coinlytx-admin-light *::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.coinlytx-admin-light *::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+/* Selection */
+.coinlytx-admin-light ::selection {
+  background: #bfdbfe;
+  color: #0f172a;
+}
+
+/* =========================================================
+   LOGIN / RESET PASSWORD CARDS
+========================================================= */
+
+.coinlytx-admin-light main > div {
+  border-color: #e2e8f0 !important;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 768px) {
+  .coinlytx-admin-light {
+    background: #f8fafc !important;
+  }
+
+  .coinlytx-admin-light main {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .coinlytx-admin-light input,
+  .coinlytx-admin-light textarea,
+  .coinlytx-admin-light select {
+    font-size: 16px !important;
+  }
+}
