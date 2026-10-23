@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Local backup archives
 *.zip
+/dist/
+.vinext/
+.cloudflare/
