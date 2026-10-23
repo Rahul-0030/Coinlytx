@@ -17,12 +17,27 @@ const COINS = [
 
 export async function GET() {
   try {
+    const apiKey = process.env.COINGECKO_API_KEY;
+
+    if (!apiKey) {
+      console.error("COINGECKO_API_KEY is missing");
+
+      return NextResponse.json(
+        {
+          success: false,
+          coins: [],
+          message: "Crypto API key is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
     const ids = COINS.join(",");
 
     const url =
       "https://api.coingecko.com/api/v3/coins/markets" +
       `?vs_currency=usd` +
-      `&ids=${ids}` +
+      `&ids=${encodeURIComponent(ids)}` +
       `&order=market_cap_desc` +
       `&sparkline=true` +
       `&price_change_percentage=1h,24h,7d`;
@@ -30,16 +45,25 @@ export async function GET() {
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
-      },
-
-      next: {
-        revalidate: 30,
+        "x-cg-demo-api-key": apiKey,
       },
     });
 
     if (!response.ok) {
-      throw new Error(
-        `CoinGecko request failed: ${response.status}`
+      const errorBody = await response.text();
+
+      console.error(
+        `CoinGecko request failed ${response.status}:`,
+        errorBody
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          coins: [],
+          message: `CoinGecko returned ${response.status}`,
+        },
+        { status: 502 }
       );
     }
 
@@ -54,7 +78,7 @@ export async function GET() {
       {
         headers: {
           "Cache-Control":
-            "public, s-maxage=30, stale-while-revalidate=60",
+            "public, s-maxage=60, stale-while-revalidate=120",
         },
       }
     );
@@ -67,9 +91,7 @@ export async function GET() {
         coins: [],
         message: "Unable to load crypto market data.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
