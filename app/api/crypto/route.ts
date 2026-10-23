@@ -15,18 +15,31 @@ const COINS = [
   "avalanche-2",
 ];
 
+const CACHE_SECONDS = 120;
+
 export async function GET() {
   try {
+    const cache = (caches as CacheStorage & { default: Cache }).default;
+
+    const cacheKey = new Request(
+      "https://coinlytx.com/__cache/crypto-market",
+      { method: "GET" }
+    );
+
+    const cachedResponse = await cache.match(cacheKey);
+
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+
     const apiKey = process.env.COINGECKO_API_KEY;
 
     if (!apiKey) {
-      console.error("COINGECKO_API_KEY is missing");
-
       return NextResponse.json(
         {
           success: false,
           coins: [],
-          message: "Crypto API key is not configured.",
+          message: "CoinGecko API key is missing.",
         },
         { status: 500 }
       );
@@ -50,11 +63,11 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
+      const body = await response.text();
 
       console.error(
         `CoinGecko request failed ${response.status}:`,
-        errorBody
+        body
       );
 
       return NextResponse.json(
@@ -69,7 +82,7 @@ export async function GET() {
 
     const data = await response.json();
 
-    return NextResponse.json(
+    const result = NextResponse.json(
       {
         success: true,
         updatedAt: new Date().toISOString(),
@@ -77,11 +90,14 @@ export async function GET() {
       },
       {
         headers: {
-          "Cache-Control":
-            "public, s-maxage=60, stale-while-revalidate=120",
+          "Cache-Control": `public, max-age=60, s-maxage=${CACHE_SECONDS}`,
         },
       }
     );
+
+    await cache.put(cacheKey, result.clone());
+
+    return result;
   } catch (error) {
     console.error("Crypto API error:", error);
 
