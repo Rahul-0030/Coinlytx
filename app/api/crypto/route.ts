@@ -15,7 +15,7 @@ const COINS = [
   "avalanche-2",
 ];
 
-const CACHE_SECONDS = 120;
+const CACHE_SECONDS = 300;
 
 export async function GET() {
   try {
@@ -32,19 +32,6 @@ export async function GET() {
       return cachedResponse;
     }
 
-    const apiKey = process.env.COINGECKO_API_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          success: false,
-          coins: [],
-          message: "CoinGecko API key is missing.",
-        },
-        { status: 500 }
-      );
-    }
-
     const ids = COINS.join(",");
 
     const url =
@@ -55,12 +42,40 @@ export async function GET() {
       `&sparkline=true` +
       `&price_change_percentage=1h,24h,7d`;
 
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "x-cg-demo-api-key": apiKey,
-      },
-    });
+    const apiKey = process.env.COINGECKO_API_KEY;
+
+    let response: Response;
+
+    if (apiKey) {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Coinlytx/1.0 (+https://coinlytx.com)",
+          "x-cg-demo-api-key": apiKey,
+        },
+      });
+
+      // Demo quota exhausted -> retry using public CoinGecko API
+      if (response.status === 429) {
+        console.warn(
+          "CoinGecko Demo quota exceeded. Falling back to public API."
+        );
+
+        response = await fetch(url, {
+          headers: {
+            Accept: "application/json",
+          "User-Agent": "Coinlytx/1.0 (+https://coinlytx.com)",
+          },
+        });
+      }
+    } else {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Coinlytx/1.0 (+https://coinlytx.com)",
+        },
+      });
+    }
 
     if (!response.ok) {
       const body = await response.text();
@@ -90,7 +105,8 @@ export async function GET() {
       },
       {
         headers: {
-          "Cache-Control": `public, max-age=60, s-maxage=${CACHE_SECONDS}`,
+          "Cache-Control":
+            `public, max-age=60, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=600`,
         },
       }
     );
@@ -111,3 +127,4 @@ export async function GET() {
     );
   }
 }
+

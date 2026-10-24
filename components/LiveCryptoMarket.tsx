@@ -110,10 +110,7 @@ export default function LiveCryptoMarket() {
         }
 
         const response = await fetch(
-          `/api/crypto?t=${Date.now()}`,
-          {
-            cache: "no-store",
-          }
+          "/api/crypto"
         );
 
         if (!response.ok) {
@@ -157,7 +154,7 @@ export default function LiveCryptoMarket() {
 
     const interval = window.setInterval(() => {
       loadMarket();
-    }, 30000);
+    }, 120000);
 
     return () => {
       window.clearInterval(interval);
@@ -624,3 +621,5 @@ export default function LiveCryptoMarket() {
     </>
   );
 }
+
+

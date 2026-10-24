@@ -108,7 +108,6 @@ async function wordpressFetch<T>(
     },
     headers: {
       Accept: "application/json",
-      "User-Agent": "Coinlytx/1.0",
     },
   });
 
@@ -615,48 +614,9 @@ export async function getPriceAnalysisPosts(
   perPage: number = 15
 ): Promise<WordPressPost[]> {
   try {
-    const categoryResponse = await fetch(
-      "https://cms.coinlytx.com/wp-json/wp/v2/categories?slug=price-analysis",
-      {
-        next: {
-          revalidate: 300,
-        },
-      }
+    return await wordpressFetch<WordPressPost[]>(
+      `/posts?categories=290&per_page=${perPage}&_embed`
     );
-
-    if (!categoryResponse.ok) {
-      throw new Error(
-        `Unable to find Price Analysis category: ${categoryResponse.status}`
-      );
-    }
-
-    const categories = await categoryResponse.json();
-
-    if (!Array.isArray(categories) || categories.length === 0) {
-      console.warn(
-        "CoinlytX Price Analysis category was not found."
-      );
-      return [];
-    }
-
-    const categoryId = categories[0].id;
-
-    const postsResponse = await fetch(
-      `https://cms.coinlytx.com/wp-json/wp/v2/posts?categories=${categoryId}&per_page=${perPage}&_embed=1`,
-      {
-        next: {
-          revalidate: 300,
-        },
-      }
-    );
-
-    if (!postsResponse.ok) {
-      throw new Error(
-        `Unable to fetch Price Analysis posts: ${postsResponse.status}`
-      );
-    }
-
-    return (await postsResponse.json()) as WordPressPost[];
   } catch (error) {
     console.error(
       "Unable to load CoinlytX Price Analysis posts:",
@@ -826,3 +786,5 @@ export async function getArchivePosts(
     };
   }
 }
+
+
