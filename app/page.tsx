@@ -18,6 +18,9 @@ import {
   type WordPressPost,
 } from "../lib/wordpress";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function Home() {
   let latestPosts: WordPressPost[] = [];
   let pressReleasePosts: WordPressPost[] = [];
@@ -190,10 +193,10 @@ export default async function Home() {
       ====================================================== */}
 
       {globalTrendingPosts.length > 0 && (
-  <GlobalTrendingSection
-    posts={globalTrendingPosts}
-  />
-)}
+        <GlobalTrendingSection
+          posts={globalTrendingPosts}
+        />
+      )}
 
       {/* =====================================================
           7. SPONSORED
